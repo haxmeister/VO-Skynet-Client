@@ -56,6 +56,7 @@ function UI.new(options)
     self.chat_input_open = false
     self.chat_listeners_bound = false
     self.on_chat_submit = options.on_chat_submit
+    self.on_chat_focus = options.on_chat_focus
     self.online = {}
     self.chat = {}
     self.sightings = {}
@@ -145,6 +146,21 @@ function UI:set_chat_submit_handler(handler)
     return true
 end
 
+-- Kept separate from rendering; the VO integrator controls engine input mode.
+function UI:set_chat_focus_handler(handler)
+    if handler ~= nil and type(handler) ~= "function" then return false end
+    self.on_chat_focus = handler
+    return true
+end
+
+function UI:notify_chat_focus(open)
+    if type(self.on_chat_focus) ~= "function" then return end
+    local ok, err = pcall(self.on_chat_focus, open)
+    if not ok then
+        print("Skynet UI: chat focus handler failed: " .. tostring(err))
+    end
+end
+
 -- The RML form handles Enter; keydown handles Escape and is also an Enter
 -- fallback. Close before invoking a callback to prevent duplicate sends.
 function UI:bind_chat_input()
@@ -192,6 +208,8 @@ function UI:begin_chat()
     self.chat_input_open = true
     form.style.display = "block"
     input.value = ""
+    -- Switch VO out of direct flight-input mode before focusing RmlUi.
+    self:notify_chat_focus(true)
     input:Focus()
     return true
 end
@@ -205,6 +223,8 @@ function UI:cancel_chat()
         input:Blur()
     end
     if form then form.style.display = "none" end
+    -- The integrator can restore the native flight-input mode.
+    self:notify_chat_focus(false)
 end
 
 function UI:submit_chat()
