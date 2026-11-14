@@ -27,12 +27,12 @@ This prototype selects `rmlui.contexts["main"]`, falling back to the first regis
 
 ### Sizing
 
-The plugin does not yet have access to real radar boundaries. The default 225-pixel left and right margins are **placeholders**, not radar measurements. In `main.lua`, change `UI.new()` to something such as:
+The plugin does not yet have access to real radar boundaries. The default 190-pixel left and right margins are **initial visual estimates** based on a 1040×806 VO screenshot, not direct radar measurements. The controller reads the RmlUi context's viewport width and sets the panel width to `viewport − left margin − right margin`; it checks for resolution changes on each tick. In `main.lua`, change `UI.new()` to something such as:
 
 ```lua
 local ui = UI.new({
-    radar_margin_left = 260,
-    radar_margin_right = 260,
+    radar_margin_left = 190,
+    radar_margin_right = 190,
     bottom_margin = 5,
     height = 166,
     online_name_limit = 20,
@@ -41,7 +41,7 @@ local ui = UI.new({
 })
 ```
 
-We will replace the provisional margins with measured radar-safe positioning once tested in the client.
+We can tune the radar-safe margins after seeing the next in-client screenshot, and eventually derive them from actual radar dimensions if VO exposes those bounds. RmlUi's absolute layout did not size the panel from left/right offsets alone; its width must be set explicitly. The plugin prints the viewport and calculated panel width once on load or on resolution changes.
 
 ### UI API
 
