@@ -63,49 +63,90 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
--- RmlUi Focus() alone is not enough while VO routes keys to flight.
--- The native HUD historically selects Game.SetInputMode(1) for flight controls.
--- Mode 0 is a limited experimental handoff to UI input (verify in client).
-local input_mode_active = false
-local focus_generation = 0
-local focus_timer = Timer()
+-- VO's IUP dialogs handle keyboard focus in flight. The failed
+-- Game.SetInputMode(0) experiment was removed; native dialogs should
+-- restore flight controls through VO's own ShowDialog/HideDialog logic.
+local native_chat_open = false
+local native_chat_dialog = nil
+local native_chat_input = nil
 
-ui:set_chat_focus_handler(function(open)
-    focus_generation = focus_generation + 1
-    if open then
-        if not Game or type(Game.SetInputMode) ~= "function" then
-            print("Skynet UI: Game.SetInputMode unavailable; keyboard routing unchanged")
-        else
-            local ok_mode, mode_err = pcall(Game.SetInputMode, 0)
-            if ok_mode then
-                input_mode_active = true
-                print("Skynet UI: requested UI input mode (0)")
-            else
-                print("Skynet UI: cannot switch keyboard mode: " .. tostring(mode_err))
-            end
-        end
-        -- Experimental focus handoff: always recover flight input if neither
-        -- Enter nor Escape reaches RmlUi. Remove when validated in VO.
-        local generation = focus_generation
-        focus_timer:SetTimeout(20000, function()
-            if ui.chat_input_open and focus_generation == generation then
-                print("Skynet UI: chat input safety timeout; restoring controls")
-                ui:cancel_chat()
-            end
-        end)
-    elseif input_mode_active then
-        input_mode_active = false
-        -- Don't force flight mode onto the login, station, or other HUD views.
-        if is_flying() then
-            local ok_mode, mode_err = pcall(Game.SetInputMode, 1)
-            if not ok_mode then
-                print("Skynet UI: cannot restore flight input: " .. tostring(mode_err))
-            else
-                print("Skynet UI: restored flight input mode (1)")
-            end
+local function close_native_chat(submit)
+    if not native_chat_open then return end
+    local message = native_chat_input and tostring(native_chat_input.value or "") or ""
+    native_chat_open = false
+    if native_chat_dialog then
+        local ok_hide, hide_err = pcall(HideDialog, native_chat_dialog)
+        if not ok_hide then
+            print("Skynet UI: cannot hide chat dialog: " .. tostring(hide_err))
         end
     end
-end)
+    if submit then
+        message = message:match("^%s*(.-)%s*$")
+        if message ~= "" then
+            ui:add_chat("LOCAL TEST", message) -- never sends to VO chat
+        end
+    end
+end
+
+local function open_native_chat()
+    if type(iup) ~= "table" and type(iup) ~= "userdata" then
+        print("Skynet UI: IUP is unavailable")
+        return false
+    end
+    if type(ShowDialog) ~= "function" or type(HideDialog) ~= "function" then
+        print("Skynet UI: ShowDialog/HideDialog unavailable")
+        return false
+    end
+    if not native_chat_dialog then
+        local input = iup.text {
+            value = "",
+            size = "340x",
+            expand = "HORIZONTAL",
+        }
+        local dialog = iup.dialog {
+            iup.vbox {
+                iup.label { title = "Skynet alliance chat" },
+                input,
+                margin = "8x8",
+                gap = "5",
+            },
+            title = "Skynet chat",
+            resize = "NO",
+            maxbox = "NO",
+            minbox = "NO",
+        }
+        -- IUP receives keyboard input while a native dialog has focus.
+        function input:k_any(key)
+            if key == 13 or key == iup.K_CR then
+                close_native_chat(true)
+                return iup.IGNORE
+            elseif key == 27 or key == iup.K_ESC then
+                close_native_chat(false)
+                return iup.IGNORE
+            end
+        end
+        function dialog:close_cb()
+            close_native_chat(false)
+            return iup.IGNORE
+        end
+        native_chat_input = input
+        native_chat_dialog = dialog
+    end
+    native_chat_input.value = ""
+    local shown, show_err = pcall(ShowDialog, native_chat_dialog, iup.CENTER, iup.CENTER)
+    if not shown then
+        print("Skynet UI: cannot open native chat dialog: " .. tostring(show_err))
+        return false
+    end
+    native_chat_open = true
+    if type(iup.SetFocus) == "function" then
+        local focused, focus_err = pcall(iup.SetFocus, native_chat_input)
+        if not focused then
+            print("Skynet UI: cannot focus native chat input: " .. tostring(focus_err))
+        end
+    end
+    return true
+end
 
 -- Bootstrapping from getters also handles ReloadInterface() while flying.
 local ship_hud_visible = is_flying()
@@ -114,6 +155,7 @@ local function sync_visibility()
     if user_wants_visible and ship_hud_visible and is_flying() then
         ui:show()
     else
+        close_native_chat(false)
         ui:hide()
     end
 end
@@ -164,10 +206,11 @@ ticker:SetTimeout(1000, refresh)
 -- Do not bind a key automatically: the player should choose a free key.
 local function toggle_chat()
     sync_visibility()
-    if ui.chat_input_open then
-        ui:cancel_chat()
+    if not ui.visible then return end
+    if native_chat_open then
+        close_native_chat(false)
     else
-        ui:begin_chat()
+        open_native_chat()
     end
 end
 
