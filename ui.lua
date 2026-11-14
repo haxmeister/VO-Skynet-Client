@@ -61,11 +61,13 @@ function UI.new(options)
     return self
 end
 
-function UI:mount(context)
+function UI:mount(context, document)
     if self.document then return true end
     context = context or self.context
     if not context then return false, "No RmlUi context" end
-    local document = context:LoadDocument(self.settings.document_path)
+    -- VO resolves LoadDocument() paths relative to the calling plugin during
+    -- startup. A caller can supply a document loaded from its main.lua here.
+    document = document or context:LoadDocument(self.settings.document_path)
     if not document then return false, "Could not load RML document: " .. tostring(self.settings.document_path) end
     self.context = context
     self.document = document
