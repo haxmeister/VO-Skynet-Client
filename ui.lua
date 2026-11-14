@@ -53,6 +53,9 @@ function UI.new(options)
     self.document = nil
     self.visible = options.visible ~= false
     self.connected = false
+    self.chat_input_open = false
+    self.chat_listeners_bound = false
+    self.on_chat_submit = options.on_chat_submit
     self.online = {}
     self.chat = {}
     self.sightings = {}
@@ -74,6 +77,7 @@ function UI:mount(context, document)
     self.document = document
     self:layout()
     self:render()
+    self:bind_chat_input()
     if self.visible then
         document:Show()
     else
@@ -113,10 +117,12 @@ function UI:layout()
 end
 
 function UI:unmount()
+    self:cancel_chat()
     if self.document then
         self.document:Close()
         self.document = nil
     end
+    self.chat_listeners_bound = false
 end
 
 function UI:show()
@@ -126,9 +132,96 @@ function UI:show()
 end
 
 function UI:hide()
+    self:cancel_chat()
     if not self.visible then return end
     self.visible = false
     if self.document then self.document:Hide() end
+end
+
+-- The UI only collects a message; an integrator decides how to deliver it.
+function UI:set_chat_submit_handler(handler)
+    if handler ~= nil and type(handler) ~= "function" then return false end
+    self.on_chat_submit = handler
+    return true
+end
+
+-- The RML form handles Enter; keydown handles Escape and is also an Enter
+-- fallback. Close before invoking a callback to prevent duplicate sends.
+function UI:bind_chat_input()
+    if self.chat_listeners_bound then return true end
+    local form, input = self:node("chat-form"), self:node("chat-input")
+    if not form or not input then return false end
+
+    local key_ids = rmlui and rmlui.key_identifier
+    local esc = (key_ids and key_ids.KI_ESCAPE) or 81
+    local enter = (key_ids and key_ids.KI_RETURN) or 72
+    local num_enter = (key_ids and key_ids.KI_NUMPADENTER) or 61
+
+    local ok_form, form_err = pcall(function()
+        form:AddEventListener("submit", function(event)
+            self:submit_chat()
+            if event then event:StopPropagation() end
+        end, false)
+    end)
+    local ok_key, key_err = pcall(function()
+        input:AddEventListener("keydown", function(event)
+            if not self.chat_input_open then return end
+            local key = event.parameters and event.parameters.key_identifier
+            if key == esc then
+                event:StopPropagation()
+                self:cancel_chat()
+            elseif key == enter or key == num_enter then
+                event:StopPropagation()
+                self:submit_chat()
+            end
+        end, false)
+    end)
+    self.chat_listeners_bound = ok_form and ok_key
+    if not self.chat_listeners_bound then
+        print("Skynet UI: chat input listeners unavailable: "
+            .. tostring(form_err or key_err))
+    end
+    return self.chat_listeners_bound
+end
+
+function UI:begin_chat()
+    if not self.visible or not self.chat_listeners_bound then return false end
+    local form, input = self:node("chat-form"), self:node("chat-input")
+    if not form or not input then return false end
+    if self.chat_input_open then return true end
+    self.chat_input_open = true
+    form.style.display = "block"
+    input.value = ""
+    input:Focus()
+    return true
+end
+
+function UI:cancel_chat()
+    if not self.chat_input_open then return end
+    self.chat_input_open = false
+    local form, input = self:node("chat-form"), self:node("chat-input")
+    if input then
+        input.value = ""
+        input:Blur()
+    end
+    if form then form.style.display = "none" end
+end
+
+function UI:submit_chat()
+    if not self.chat_input_open then return false end
+    local input = self:node("chat-input")
+    local message = input and tostring(input.value or "") or ""
+    message = message:match("^%s*(.-)%s*$")
+    self:cancel_chat()
+    if message == "" then return false end
+    if type(self.on_chat_submit) == "function" then
+        local ok, err = pcall(self.on_chat_submit, message)
+        if not ok then
+            print("Skynet UI: chat submit handler failed: " .. tostring(err))
+            return false
+        end
+    end
+    return true
 end
 
 function UI:set_connected(connected)
