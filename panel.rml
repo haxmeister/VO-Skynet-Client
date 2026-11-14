@@ -1,0 +1,100 @@
+<rml>
+<head>
+<title>Skynet UI Prototype</title>
+<style>
+body {
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    color: #e4ecf6;
+}
+#skynet-panel {
+    position: absolute;
+    bottom: 5px;
+    left: 225px;
+    right: 225px;
+    height: 166px;
+    display: flex;
+    flex-direction: column;
+    background-color: rgba(7, 20, 36, 0.68);
+    border: 1px solid #3f7799;
+    border-radius: 5px;
+}
+#skynet-header {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 9px 3px 9px;
+    color: #7fc9ff;
+    font-size: 12px;
+    letter-spacing: 1px;
+    border-bottom: 1px solid #294d68;
+}
+.status-on { color: #69e0aa; }
+.status-off { color: #e47c7c; }
+#skynet-columns {
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 4px;
+}
+.section {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid #315572;
+    background-color: rgba(9, 26, 43, 0.28);
+    padding: 5px 7px;
+}
+.heading {
+    flex: 0 0 auto;
+    font-weight: bold;
+    font-size: 11px;
+    color: #8bcdf4;
+    margin-bottom: 4px;
+    white-space: nowrap;
+}
+.scroller { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#online-panel {
+    flex: 0 0 auto;
+    max-width: 210px;
+    margin-right: 5px;
+}
+#online-list { white-space: nowrap; }
+.online-row { margin-bottom: 3px; }
+#chat-panel { flex: 1 1 0; min-width: 0; margin-right: 5px; }
+#chat-list { overflow-wrap: break-word; }
+.chat-row { margin-bottom: 3px; }
+#sightings-panel { flex: 0 0 auto; }
+#sightings-list { white-space: nowrap; }
+.sighting-row { display: flex; margin-bottom: 3px; }
+.sighting-pilot { margin-right: 9px; }
+.sighting-ship { color: #d7e3ed; margin-right: 9px; }
+.sighting-sector { margin-right: 9px; }
+.sighting-age { color: #93a4b3; }
+</style>
+</head>
+<body>
+  <div id="skynet-panel">
+    <div id="skynet-header">
+      <span>SKYNET</span>
+      <span id="connection-status">DISCONNECTED</span>
+    </div>
+    <div id="skynet-columns">
+      <div id="online-panel" class="section">
+        <div class="heading">ONLINE (<span id="online-count">0</span>)</div>
+        <div id="online-list" class="scroller"></div>
+      </div>
+      <div id="chat-panel" class="section">
+        <div class="heading">ALLIANCE CHAT</div>
+        <div id="chat-list" class="scroller"></div>
+      </div>
+      <div id="sightings-panel" class="section">
+        <div class="heading">SIGHTINGS</div>
+        <div id="sightings-list" class="scroller"></div>
+      </div>
+    </div>
+  </div>
+</body>
+</rml>
