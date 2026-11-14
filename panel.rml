@@ -77,6 +77,18 @@ body {
 }
 #chat-list { word-break: break-word; }
 .chat-row { display: block; margin-bottom: 3px; }
+/* Keep chat entry completely out of the layout until a hotkey opens it. */
+#chat-form { display: none; flex: 0 0 auto; margin-top: 3px; }
+#chat-input {
+    display: block;
+    width: 100%;
+    height: 21px;
+    background-color: rgba(6, 16, 29, 0.82);
+    color: #e4ecf6;
+    border-width: 0px;
+    padding: 2px 4px;
+    font-size: 13px;
+}
 #sightings-panel { flex: 0 0 auto; }
 #sightings-list { white-space: nowrap; }
 .sighting-row { display: flex; margin-bottom: 3px; }
@@ -100,6 +112,9 @@ body {
       <div id="chat-panel" class="section">
         <div class="heading">ALLIANCE CHAT</div>
         <div id="chat-list" class="scroller"></div>
+        <form id="chat-form">
+          <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
+        </form>
       </div>
       <div id="sightings-panel" class="section">
         <div class="heading">SIGHTINGS</div>
