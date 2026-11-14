@@ -1,6 +1,7 @@
 -- Standalone Skynet-style RmlUi HUD. No networking or VO custom events here.
 local UI = {}
-UI.__index = UI
+-- Vendetta Online does not expose setmetatable to plugins.
+-- UI instances receive the methods directly rather than via __index.
 
 local DEFAULTS = {
     radar_margin_left = 225,
@@ -35,7 +36,12 @@ end
 
 function UI.new(options)
     options = options or {}
-    local self = setmetatable({}, UI)
+    local self = {}
+    for name, method in pairs(UI) do
+        if type(method) == "function" and name ~= "new" then
+            self[name] = method
+        end
+    end
     self.settings = {}
     for key, value in pairs(DEFAULTS) do
         self.settings[key] = options[key] == nil and value or options[key]
