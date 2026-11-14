@@ -1,10 +1,8 @@
 -- VO plugin entry point. Demonstration data only; Skynet networking comes later.
 local UI = dofile("ui.lua")
--- Use a root-relative path to avoid VO's repeated plugin-directory prefix.
--- Keep the document path configurable in the reusable UI component.
-local ui = UI.new({
-    document_path = "/plugins/VO-Skynet-Client-UI/panel.rml",
-})
+-- RmlUi resolves relative paths in the plugin's initialization scope.
+-- Load the RML from the entry point, not from a secondary dofile() module.
+local ui = UI.new()
 -- Keep the UI instance local; Vendetta Online does not expose _G.
 
 local context = rmlui and rmlui.contexts
@@ -14,7 +12,14 @@ if not context then
     return
 end
 
-local ok, err = ui:mount(context)
+-- VO's LoadDocument() path resolution is scoped to the calling plugin.
+local document = context:LoadDocument("panel.rml")
+if not document then
+    print("Skynet UI: could not load panel.rml from plugin main.lua")
+    return
+end
+
+local ok, err = ui:mount(context, document)
 if not ok then
     print("Skynet UI: " .. tostring(err))
     return
