@@ -63,6 +63,50 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
+-- RmlUi Focus() alone is not enough while VO routes keys to flight.
+-- The native HUD historically selects Game.SetInputMode(1) for flight controls.
+-- Mode 0 is a limited experimental handoff to UI input (verify in client).
+local input_mode_active = false
+local focus_generation = 0
+local focus_timer = Timer()
+
+ui:set_chat_focus_handler(function(open)
+    focus_generation = focus_generation + 1
+    if open then
+        if not Game or type(Game.SetInputMode) ~= "function" then
+            print("Skynet UI: Game.SetInputMode unavailable; keyboard routing unchanged")
+        else
+            local ok_mode, mode_err = pcall(Game.SetInputMode, 0)
+            if ok_mode then
+                input_mode_active = true
+                print("Skynet UI: requested UI input mode (0)")
+            else
+                print("Skynet UI: cannot switch keyboard mode: " .. tostring(mode_err))
+            end
+        end
+        -- Experimental focus handoff: always recover flight input if neither
+        -- Enter nor Escape reaches RmlUi. Remove when validated in VO.
+        local generation = focus_generation
+        focus_timer:SetTimeout(20000, function()
+            if ui.chat_input_open and focus_generation == generation then
+                print("Skynet UI: chat input safety timeout; restoring controls")
+                ui:cancel_chat()
+            end
+        end)
+    elseif input_mode_active then
+        input_mode_active = false
+        -- Don't force flight mode onto the login, station, or other HUD views.
+        if is_flying() then
+            local ok_mode, mode_err = pcall(Game.SetInputMode, 1)
+            if not ok_mode then
+                print("Skynet UI: cannot restore flight input: " .. tostring(mode_err))
+            else
+                print("Skynet UI: restored flight input mode (1)")
+            end
+        end
+    end
+end)
+
 -- Bootstrapping from getters also handles ReloadInterface() while flying.
 local ship_hud_visible = is_flying()
 
