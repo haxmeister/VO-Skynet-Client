@@ -21,27 +21,21 @@ Copy the contents of this repository into a folder named `skynetui` under VO's `
 
 Use `/skynetui hide`, `/skynetui show`, or `/skynetui demo` in the VO console. The demo command adds a sample chat message and refreshes a sighting.
 
-### Chat entry — first interactive milestone
+### Chat entry — native IUP focus test (November 14, 2026)
 
-The existing chat history remains visible in flight; the **text-entry field is hidden** until activated. Use `/skynetui chat` to toggle it, or bind an unused key to the dedicated command:
+A real VO flight test showed that the RmlUi inline input had a blinking caret, but all keystrokes still controlled the ship. An attempted `Game.SetInputMode(0)` switch **did not fix this**: the game still handled all keys and RmlUi received no characters. That unverified input-mode experiment and its 20-second timer were removed.
+
+The same `/skynetui chat` command, or an existing bind like:
 
 ```text
 /bind F8 skynetui_chat
 ```
 
-**F8 is only an example**; check existing binds and choose a key you are comfortable overriding. No key is rebound by the plugin itself. Binding a command is important because entering `/skynetui chat` in the console may leave focus in VO's own console.
+now opens a small **native IUP text dialog**. This is a temporary, testable input mechanism: VO's own `ShowDialog` should handle the flight-to-dialog keyboard handoff that RmlUi's `Focus()` does not. Press **Enter** to add a `LOCAL TEST: ...` message to Skynet's RmlUi chat history, or **Escape** to cancel. The native dialog should close and return focus to flight controls. Docking or hiding Skynet also closes it. **Nothing is sent to VO chat or a network server.**
 
-While in flight, activate the hotkey, type a message, and press **Enter** to submit or **Escape** to cancel. The field clears and disappears after either action. Docking, logging out, hiding the Skynet panel, or switching HUDs also cancels the entry. Outside flight, the command does not open the input.
+No key is rebound automatically. Testing while stationary in a safe sector is recommended. Verify: (1) whether opening the dialog stops the ship controls from responding to typed letters, (2) whether letters appear in the IUP input, (3) Enter/Escape and restoration after closing. Please include the errors log if any operation fails.
 
-**This is a UI-only demo.** Submitted text appears as `LOCAL TEST: ...` in the Skynet chat list. It is **not sent** over VO chat, TCP, Skynet, or a VO custom event. The reusable UI exposes `ui:set_chat_submit_handler(function(message) ... end)` so a networking plugin can supply its own handler later.
-
-**Keyboard routing experiment (November 14, 2026):** An in-client test showed a blinking RmlUi cursor while all typed keys still triggered flight controls. This means RmlUi element focus alone does not transfer VO's keyboard routing. The VO entry point now experimentally calls `Game.SetInputMode(0)` when input opens and restores `Game.SetInputMode(1)` on close **only if still in flight**. The historical meaning of these modes is documented by community plugin research, but we have not yet confirmed that mode 0 delivers input to RmlUi in the current VO client. It is deliberately implemented in `main.lua`, leaving `ui.lua` renderer/game-agnostic. The UI exposes `ui:set_chat_focus_handler(function(open) ... end)` for this integration.
-
-**Safety:** During this unverified experiment, a 20-second timeout closes the input and attempts to restore flight controls if Enter/Escape do not work. Do not test this in combat. The log prints `requested UI input mode (0)`, `restored flight input mode (1)`, or an error if the API is unavailable. RmlUi's `keydown` identifiers have known limitations on some Linux keys; a form `submit` listener provides an alternate Enter path. Report whether flight keys stop and whether typing reaches the field; send the errors log for failures.
-
-This prototype selects `rmlui.contexts["main"]`, falling back to the first registered context. It must be tested in VO to confirm that this is the right context for the flight HUD and that it is visible above the game UI. VO's IUP HUD can render over RmlUi.
-
-**RML loading:** VO 1.8.775+ documents are intended to load relative to the plugin's directory **during plugin initialization**. Early tests showed repeated plugin-prefix paths when `LoadDocument()` was called from inside a helper module, and a leading `/plugins/...` path also failed. The entry point now calls `context:LoadDocument("panel.rml")` directly from `main.lua` and supplies the resulting document to `ui:mount(context, document)`. The change still needs an in-game verification. The UI controller also accepts a document directly, so it can remain reusable across plugins.
+**Long-term UI goal remains the compact inline RmlUi input.** We are leaving its hidden form and controller methods in place until we understand how VO forwards keyboard events from its flight HUD to the RmlUi context. The IUP dialog is a fallback, not a claim that RmlUi input now works in flight.
 
 ### Flight-only visibility
 
@@ -104,7 +98,7 @@ Network plugins will eventually translate **custom VO events** into these calls.
 ### Next milestones
 
 1. Verify panel visibility, sizing, text rendering and scroll behavior in the VO client.
-2. Validate the new chat-entry hotkey, input focus, Enter submission, Escape cancellation, and flight-control restoration in a running VO client.
+2. Validate native IUP chat-entry focus, Enter/Escape, and flight-control restoration; investigate a future inline RmlUi input once VO's keyboard routing is understood.
 3. Define and consume custom VO events for chat, roster, sightings, colors, ownership and connection state.
 4. Replace provisional radar margins with bounds that accurately fit between both radar widgets.
 
@@ -114,4 +108,4 @@ Network plugins will eventually translate **custom VO events** into these calls.
 - Styling is embedded in `panel.rml` to avoid the reported RmlUi external stylesheet cache issue during rapid iteration.
 - The demo's green CONNECTED text is simulated; it does not indicate an active server.
 - User text is HTML-escaped before being placed into the RmlUi document.
-- Chat-entry listeners and keyboard focus have been added, but are not yet verified by a VO runtime test.
+- An inline RmlUi chat form exists but does not receive flight-mode keyboard input in the tested VO client. The native IUP fallback is currently used for entry.
