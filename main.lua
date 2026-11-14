@@ -1,7 +1,7 @@
 -- VO plugin entry point. Demonstration data only; Skynet networking comes later.
 local UI = dofile("ui.lua")
 local ui = UI.new()
-_G.SkynetUI = ui
+-- Keep the UI instance local; Vendetta Online does not expose _G.
 
 local context = rmlui and rmlui.contexts
     and (rmlui.contexts["main"] or rmlui.contexts[1])
