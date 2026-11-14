@@ -23,6 +23,8 @@ Use `/skynetui hide`, `/skynetui show`, or `/skynetui demo` in the VO console. T
 
 This prototype selects `rmlui.contexts["main"]`, falling back to the first registered context. It must be tested in VO to confirm that this is the right context for the flight HUD and that it is visible above the game UI. VO's IUP HUD can render over RmlUi.
 
+**RML path test:** In the first client test, `LoadDocument("panel.rml")` failed after VO repeatedly prepended the plugin directory (three times). The plugin entry point now passes `document_path = "/plugins/VO-Skynet-Client-UI/panel.rml"` to try root-relative loading instead. This is an **untested workaround**, not a confirmed fix. If you rename the plugin folder, adjust that path in `main.lua`. Standalone `UI.new()` still defaults to `panel.rml` so callers can choose the appropriate path.
+
 ### Sizing
 
 The plugin does not yet have access to real radar boundaries. The default 225-pixel left and right margins are **placeholders**, not radar measurements. In `main.lua`, change `UI.new()` to something such as:
