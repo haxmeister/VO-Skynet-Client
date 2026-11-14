@@ -152,10 +152,16 @@ end
 local ship_hud_visible = is_flying()
 
 local function sync_visibility()
-    if user_wants_visible and ship_hud_visible and is_flying() then
+    local flying = is_flying()
+    if not user_wants_visible or not flying then
+        -- A real dock/logout or user hide must close the text entry.
+        close_native_chat(false)
+        ui:hide()
+    elseif ship_hud_visible then
         ui:show()
     else
-        close_native_chat(false)
+        -- Some native dialogs may hide the ship HUD temporarily.
+        -- Do not close our own dialog just because HUD_HIDE fired.
         ui:hide()
     end
 end
