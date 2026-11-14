@@ -12,6 +12,7 @@ local DEFAULTS = {
     sighting_ttl = 60,
     chat_limit = 200,
     neutral_color = "#a8b9c8",
+    document_path = "panel.rml",
 }
 
 local function escape(value)
@@ -64,8 +65,8 @@ function UI:mount(context)
     if self.document then return true end
     context = context or self.context
     if not context then return false, "No RmlUi context" end
-    local document = context:LoadDocument("panel.rml")
-    if not document then return false, "Could not load panel.rml" end
+    local document = context:LoadDocument(self.settings.document_path)
+    if not document then return false, "Could not load RML document: " .. tostring(self.settings.document_path) end
     self.context = context
     self.document = document
     local panel = document:GetElementById("skynet-panel")
