@@ -4,8 +4,9 @@ local UI = {}
 -- UI instances receive the methods directly rather than via __index.
 
 local DEFAULTS = {
-    radar_margin_left = 225,
-    radar_margin_right = 225,
+    -- Reserve enough space for the radar widgets; values remain configurable.
+    radar_margin_left = 190,
+    radar_margin_right = 190,
     bottom_margin = 5,
     height = 166,
     online_name_limit = 20,
@@ -71,16 +72,40 @@ function UI:mount(context, document)
     if not document then return false, "Could not load RML document: " .. tostring(self.settings.document_path) end
     self.context = context
     self.document = document
-    local panel = document:GetElementById("skynet-panel")
-    if panel then
-        panel.style.left = tostring(self.settings.radar_margin_left) .. "px"
-        panel.style.right = tostring(self.settings.radar_margin_right) .. "px"
-        panel.style.bottom = tostring(self.settings.bottom_margin) .. "px"
-        panel.style.height = tostring(self.settings.height) .. "px"
-    end
+    self:layout()
     self:render()
     document:Show()
     return true
+end
+
+-- Absolute positioning needs a definite panel width in VO's RmlUi.
+-- Compute it from the context width so chat can use all radar-safe space.
+function UI:layout()
+    local panel = self:node("skynet-panel")
+    if not panel or not self.context then return end
+    local dimensions = self.context.dimensions
+    local screen_width = dimensions and tonumber(dimensions.x)
+    if not screen_width or screen_width <= 0 then
+        -- Do not invent a screen resolution when no dimensions are available.
+        return
+    end
+    local left = tonumber(self.settings.radar_margin_left) or 190
+    local right = tonumber(self.settings.radar_margin_right) or 190
+    local panel_width = math.max(1, screen_width - left - right)
+    if self.layout_width == screen_width and self.layout_left == left
+        and self.layout_right == right then
+        return
+    end
+    panel.style.left = tostring(left) .. "px"
+    panel.style.right = "auto"
+    panel.style.width = tostring(panel_width) .. "px"
+    panel.style.bottom = tostring(self.settings.bottom_margin) .. "px"
+    panel.style.height = tostring(self.settings.height) .. "px"
+    self.layout_width = screen_width
+    self.layout_left = left
+    self.layout_right = right
+    print("Skynet UI layout: viewport " .. screen_width .. "px; panel "
+        .. panel_width .. "px; margins " .. left .. "/" .. right)
 end
 
 function UI:unmount()
@@ -159,6 +184,7 @@ function UI:add_sighting(name, ship_type, sector, seen_at)
 end
 
 function UI:tick()
+    self:layout() -- Adjust if the game's viewport resolution changes.
     local now = self.clock()
     local dirty = false
     for name, sighting in pairs(self.sightings) do
