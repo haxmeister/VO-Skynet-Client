@@ -97,7 +97,10 @@ for _, event in ipairs({
     "LEAVING_STATION", "SHIP_SPAWNED", "PLAYER_ENTERED_GAME",
     "PLAYER_LOGGED_OUT", "SERVER_DISCONNECTED",
 }) do
-    RegisterEvent(lifecycle, event)
+    local registered, reason = pcall(RegisterEvent, lifecycle, event)
+    if not registered then
+        print("Skynet UI: cannot watch " .. event .. ": " .. tostring(reason))
+    end
 end
 
 sync_visibility()
