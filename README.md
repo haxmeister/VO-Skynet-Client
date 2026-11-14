@@ -25,6 +25,16 @@ This prototype selects `rmlui.contexts["main"]`, falling back to the first regis
 
 **RML loading:** VO 1.8.775+ documents are intended to load relative to the plugin's directory **during plugin initialization**. Early tests showed repeated plugin-prefix paths when `LoadDocument()` was called from inside a helper module, and a leading `/plugins/...` path also failed. The entry point now calls `context:LoadDocument("panel.rml")` directly from `main.lua` and supplies the resulting document to `ui:mount(context, document)`. The change still needs an in-game verification. The UI controller also accepts a document directly, so it can remain reusable across plugins.
 
+### Flight-only visibility
+
+The prototype is **hidden by default** on the login, character-selection, and station screens. The plugin loads RML while VO is initializing (when relative file resolution works), but displays the document only when the ship HUD is active and the client reports `HasActiveShip() == true` and `PlayerInStation() == false`.
+
+The entry point observes `HUD_SHOW("ship")`, `HUD_HIDE`, `ENTERING_STATION`, `ENTERED_STATION`, `SHOW_STATION`, `LEAVING_STATION`, `SHIP_SPAWNED`, `PLAYER_ENTERED_GAME`, `PLAYER_LOGGED_OUT`, and `SERVER_DISCONNECTED`. VO API observations confirm the key HUD and station events; other event hooks are installed defensively. A one-second check handles state changes and in-flight interface reloads.
+
+`/skynetui hide` turns off manual visibility, while `/skynetui show` re-enables it **only in flight**. `/skynetui demo` adds simulated content but never makes the panel appear at login or in a station.
+
+**Test sequence:** startup/login screen (hidden) → character select (hidden) → docked (hidden) → launch (visible) → dock (hidden) → launch (visible), then try `/skynetui hide` and `/skynetui show` in flight. Neither event timing nor document visibility has yet been validated on the target VO client, so please report any failures with the log and screenshot.
+
 ### Sizing
 
 The plugin does not yet have access to real radar boundaries. The default 190-pixel left and right margins are **initial visual estimates** based on a 1040×806 VO screenshot, not direct radar measurements. The controller reads the RmlUi context's viewport width and sets the panel width to `viewport − left margin − right margin`; it checks for resolution changes on each tick. In `main.lua`, change `UI.new()` to something such as:
