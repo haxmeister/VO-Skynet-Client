@@ -2,6 +2,8 @@
 <head>
 <title>Skynet UI Prototype</title>
 <style>
+/* RmlUi has no browser-like default stylesheet: div is inline by default. */
+div { display: block; }
 body {
     width: 100%;
     height: 100%;
@@ -67,10 +69,10 @@ body {
     margin-right: 5px;
 }
 #online-list { white-space: nowrap; }
-.online-row { margin-bottom: 3px; }
+.online-row { display: block; margin-bottom: 3px; }
 #chat-panel { flex: 1 1 0; min-width: 0; margin-right: 5px; }
 #chat-list { word-break: break-word; }
-.chat-row { margin-bottom: 3px; }
+.chat-row { display: block; margin-bottom: 3px; }
 #sightings-panel { flex: 0 0 auto; }
 #sightings-list { white-space: nowrap; }
 .sighting-row { display: flex; margin-bottom: 3px; }
