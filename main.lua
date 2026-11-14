@@ -1,6 +1,10 @@
 -- VO plugin entry point. Demonstration data only; Skynet networking comes later.
 local UI = dofile("ui.lua")
-local ui = UI.new()
+-- Use a root-relative path to avoid VO's repeated plugin-directory prefix.
+-- Keep the document path configurable in the reusable UI component.
+local ui = UI.new({
+    document_path = "/plugins/VO-Skynet-Client-UI/panel.rml",
+})
 -- Keep the UI instance local; Vendetta Online does not expose _G.
 
 local context = rmlui and rmlui.contexts
