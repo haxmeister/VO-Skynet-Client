@@ -51,7 +51,7 @@ function UI.new(options)
     self.clock = options.clock or os.time
     self.context = options.context
     self.document = nil
-    self.visible = true
+    self.visible = options.visible ~= false
     self.connected = false
     self.online = {}
     self.chat = {}
@@ -74,7 +74,11 @@ function UI:mount(context, document)
     self.document = document
     self:layout()
     self:render()
-    document:Show()
+    if self.visible then
+        document:Show()
+    else
+        document:Hide()
+    end
     return true
 end
 
@@ -116,11 +120,13 @@ function UI:unmount()
 end
 
 function UI:show()
+    if self.visible then return end
     self.visible = true
     if self.document then self.document:Show() end
 end
 
 function UI:hide()
+    if not self.visible then return end
     self.visible = false
     if self.document then self.document:Hide() end
 end
