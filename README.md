@@ -21,6 +21,22 @@ Copy the contents of this repository into a folder named `skynetui` under VO's `
 
 Use `/skynetui hide`, `/skynetui show`, or `/skynetui demo` in the VO console. The demo command adds a sample chat message and refreshes a sighting.
 
+### Chat entry — first interactive milestone
+
+The existing chat history remains visible in flight; the **text-entry field is hidden** until activated. Use `/skynetui chat` to toggle it, or bind an unused key to the dedicated command:
+
+```text
+/bind F8 skynetui_chat
+```
+
+**F8 is only an example**; check existing binds and choose a key you are comfortable overriding. No key is rebound by the plugin itself. Binding a command is important because entering `/skynetui chat` in the console may leave focus in VO's own console.
+
+While in flight, activate the hotkey, type a message, and press **Enter** to submit or **Escape** to cancel. The field clears and disappears after either action. Docking, logging out, hiding the Skynet panel, or switching HUDs also cancels the entry. Outside flight, the command does not open the input.
+
+**This is a UI-only demo.** Submitted text appears as `LOCAL TEST: ...` in the Skynet chat list. It is **not sent** over VO chat, TCP, Skynet, or a VO custom event. The reusable UI exposes `ui:set_chat_submit_handler(function(message) ... end)` so a networking plugin can supply its own handler later.
+
+Input focus, keyboard routing (including the release of flight controls after Escape), and Enter/submit behavior still require a real VO client test. RmlUi's `keydown` identifiers have known limitations on some Linux keys; a form `submit` listener provides an alternate Enter path. If the entry opens but does not accept typing, collect the VO errors log and report which input methods work.
+
 This prototype selects `rmlui.contexts["main"]`, falling back to the first registered context. It must be tested in VO to confirm that this is the right context for the flight HUD and that it is visible above the game UI. VO's IUP HUD can render over RmlUi.
 
 **RML loading:** VO 1.8.775+ documents are intended to load relative to the plugin's directory **during plugin initialization**. Early tests showed repeated plugin-prefix paths when `LoadDocument()` was called from inside a helper module, and a leading `/plugins/...` path also failed. The entry point now calls `context:LoadDocument("panel.rml")` directly from `main.lua` and supplies the resulting document to `ui:mount(context, document)`. The change still needs an in-game verification. The UI controller also accepts a document directly, so it can remain reusable across plugins.
@@ -69,6 +85,11 @@ ui:set_player_alliance("SomePilot", "itani")
 ui:set_sector_owner("Sedina B-8", "itani") -- nil for unowned
 ui:replace_online({ "SomePilot" })
 ui:add_chat("SomePilot", "Hello alliance")
+ui:set_chat_submit_handler(function(message)
+    -- Deliver to a future Skynet transport; the UI itself sends nothing.
+end)
+ui:begin_chat() -- only opens while the panel is visible
+ui:cancel_chat()
 ui:add_sighting("SomePilot", "Vult", "Sedina B-8", os.time())
 ui:tick() -- run every second for expiry and age labels
 ui:hide()
@@ -81,7 +102,7 @@ Network plugins will eventually translate **custom VO events** into these calls.
 ### Next milestones
 
 1. Verify panel visibility, sizing, text rendering and scroll behavior in the VO client.
-2. Add the chat-entry hotkey and input-focus behavior (hidden until activation; Enter to submit; Escape to cancel).
+2. Validate the new chat-entry hotkey, input focus, Enter submission, Escape cancellation, and flight-control restoration in a running VO client.
 3. Define and consume custom VO events for chat, roster, sightings, colors, ownership and connection state.
 4. Replace provisional radar margins with bounds that accurately fit between both radar widgets.
 
@@ -91,4 +112,4 @@ Network plugins will eventually translate **custom VO events** into these calls.
 - Styling is embedded in `panel.rml` to avoid the reported RmlUi external stylesheet cache issue during rapid iteration.
 - The demo's green CONNECTED text is simulated; it does not indicate an active server.
 - User text is HTML-escaped before being placed into the RmlUi document.
-- RmlUi element listeners and keyboard focus are intentionally deferred until after basic in-client rendering is verified.
+- Chat-entry listeners and keyboard focus have been added, but are not yet verified by a VO runtime test.
