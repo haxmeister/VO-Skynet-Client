@@ -2,7 +2,8 @@
 local UI = dofile("ui.lua")
 -- RmlUi resolves relative paths in the plugin's initialization scope.
 -- Load the RML from the entry point, not from a secondary dofile() module.
-local ui = UI.new()
+-- Start hidden. VO loads plugins even on the login screen.
+local ui = UI.new({ visible = false })
 -- Keep the UI instance local; Vendetta Online does not expose _G.
 
 local context = rmlui and rmlui.contexts
@@ -45,9 +46,66 @@ ui:add_sighting("Drake", "Vult", "Odia M-14", now - 8)
 ui:add_sighting("Specter", "Prom", "Sedina B-8", now - 17)
 ui:set_connected(true) -- Demo indicator; NOT a real server connection.
 
+-- Flight visibility: keep the RML loaded but never display it outside
+-- the ship HUD. This preserves chat, roster and sighting state while docked.
+local user_wants_visible = true
+
+local function is_flying()
+    if type(PlayerInStation) ~= "function" or type(HasActiveShip) ~= "function" then
+        return false
+    end
+    local station_ok, in_station = pcall(PlayerInStation)
+    local ship_ok, active_ship = pcall(HasActiveShip)
+    return station_ok and in_station == false and ship_ok and active_ship == true
+end
+
+-- Bootstrapping from getters also handles ReloadInterface() while flying.
+local ship_hud_visible = is_flying()
+
+local function sync_visibility()
+    if user_wants_visible and ship_hud_visible and is_flying() then
+        ui:show()
+    else
+        ui:hide()
+    end
+end
+
+-- The observer form is used by our VO APIProbe plugin and requires no metatables.
+local lifecycle = {}
+function lifecycle:OnEvent(event, view)
+    if event == "HUD_SHOW" then
+        ship_hud_visible = (view == "ship")
+    elseif event == "HUD_HIDE"
+        or event == "ENTERING_STATION"
+        or event == "ENTERED_STATION"
+        or event == "SHOW_STATION"
+        or event == "PLAYER_LOGGED_OUT"
+        or event == "SERVER_DISCONNECTED" then
+        ship_hud_visible = false
+    elseif event == "LEAVING_STATION"
+        or event == "SHIP_SPAWNED"
+        or event == "PLAYER_ENTERED_GAME" then
+        -- Recheck actual ship/station state before displaying the panel.
+        ship_hud_visible = is_flying()
+    end
+    sync_visibility()
+end
+
+for _, event in ipairs({
+    "HUD_SHOW", "HUD_HIDE",
+    "ENTERING_STATION", "ENTERED_STATION", "SHOW_STATION",
+    "LEAVING_STATION", "SHIP_SPAWNED", "PLAYER_ENTERED_GAME",
+    "PLAYER_LOGGED_OUT", "SERVER_DISCONNECTED",
+}) do
+    RegisterEvent(lifecycle, event)
+end
+
+sync_visibility()
+
 local ticker = Timer()
 local function refresh()
     ui:tick()
+    sync_visibility()
     ticker:SetTimeout(1000, refresh)
 end
 ticker:SetTimeout(1000, refresh)
@@ -57,13 +115,14 @@ ticker:SetTimeout(1000, refresh)
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
-        ui:hide()
+        user_wants_visible = false
     elseif command == "demo" then
-        ui:show()
+        user_wants_visible = true
         ui:add_chat("Raven", "New demo message.")
         ui:add_sighting("Drake", "Vult", "Odia M-14")
     else
-        ui:show()
+        user_wants_visible = true
     end
+    sync_visibility()
 end)
 print("Skynet UI prototype loaded; /skynetui hide|show|demo")
