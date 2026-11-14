@@ -45,6 +45,10 @@ ui:add_chat("Falcon", "I'll hold position.")
 ui:add_sighting("Drake", "Vult", "Odia M-14", now - 8)
 ui:add_sighting("Specter", "Prom", "Sedina B-8", now - 17)
 ui:set_connected(true) -- Demo indicator; NOT a real server connection.
+-- No network send yet: submitting only echoes a message locally for UI testing.
+ui:set_chat_submit_handler(function(message)
+    ui:add_chat("LOCAL TEST", message)
+end)
 
 -- Flight visibility: keep the RML loaded but never display it outside
 -- the ship HUD. This preserves chat, roster and sighting state while docked.
@@ -113,8 +117,17 @@ local function refresh()
 end
 ticker:SetTimeout(1000, refresh)
 
--- /skynetui hide|show|demo
--- /skynetui demo can add new sample sightings/messages after launch.
+-- Do not bind a key automatically: the player should choose a free key.
+local function toggle_chat()
+    sync_visibility()
+    if ui.chat_input_open then
+        ui:cancel_chat()
+    else
+        ui:begin_chat()
+    end
+end
+
+-- /skynetui hide|show|demo|chat
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -123,9 +136,18 @@ RegisterUserCommand("skynetui", function(_, args)
         user_wants_visible = true
         ui:add_chat("Raven", "New demo message.")
         ui:add_sighting("Drake", "Vult", "Odia M-14")
+    elseif command == "chat" then
+        toggle_chat()
+        return
     else
         user_wants_visible = true
     end
     sync_visibility()
 end)
-print("Skynet UI prototype loaded; /skynetui hide|show|demo")
+
+-- VO's /bind can target this command: /bind F8 skynetui_chat
+RegisterUserCommand("skynetui_chat", function()
+    toggle_chat()
+end)
+
+print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat")
