@@ -23,7 +23,7 @@ Use `/skynetui hide`, `/skynetui show`, or `/skynetui demo` in the VO console. T
 
 This prototype selects `rmlui.contexts["main"]`, falling back to the first registered context. It must be tested in VO to confirm that this is the right context for the flight HUD and that it is visible above the game UI. VO's IUP HUD can render over RmlUi.
 
-**RML path test:** In the first client test, `LoadDocument("panel.rml")` failed after VO repeatedly prepended the plugin directory (three times). The plugin entry point now passes `document_path = "/plugins/VO-Skynet-Client-UI/panel.rml"` to try root-relative loading instead. This is an **untested workaround**, not a confirmed fix. If you rename the plugin folder, adjust that path in `main.lua`. Standalone `UI.new()` still defaults to `panel.rml` so callers can choose the appropriate path.
+**RML loading:** VO 1.8.775+ documents are intended to load relative to the plugin's directory **during plugin initialization**. Early tests showed repeated plugin-prefix paths when `LoadDocument()` was called from inside a helper module, and a leading `/plugins/...` path also failed. The entry point now calls `context:LoadDocument("panel.rml")` directly from `main.lua` and supplies the resulting document to `ui:mount(context, document)`. The change still needs an in-game verification. The UI controller also accepts a document directly, so it can remain reusable across plugins.
 
 ### Sizing
 
@@ -50,7 +50,9 @@ We will replace the provisional margins with measured radar-safe positioning onc
 ```lua
 local UI = dofile("ui.lua")
 local ui = UI.new()
-ui:mount(rmlui.contexts["main"])
+local context = rmlui.contexts["main"]
+local document = context:LoadDocument("panel.rml")
+ui:mount(context, document)
 ui:set_connected(true)
 ui:set_alliance_color("itani", "#65c6ff")
 ui:set_player_alliance("SomePilot", "itani")
