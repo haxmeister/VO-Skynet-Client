@@ -2,7 +2,9 @@
 <head>
 <title>Skynet UI</title>
 <style>
-/* VO RmlUi has no default HTML/scrollbar styles. All dimensions are explicit. */
+/* VO RmlUi has no default HTML/scrollbar styles. All dimensions are explicit.
+   CRITICAL: RmlUi rgba() ALPHA IS 0..255, not the browser's 0..1!
+   rgba(7, 20, 36, 235) is roughly 92% opaque, whereas 0.92 is invisible. */
 div, form { display: block; }
 body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color: #e4ecf6; }
 #skynet-panel {
@@ -49,7 +51,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     height: 24px;
     padding: 3px 9px;
-    background-color: rgba(7, 20, 36, 0.92);
+    background-color: rgba(7, 20, 36, 235);
     border-radius: 5px 5px 0px 0px;
 }
 #skynet-title {
@@ -93,7 +95,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     padding: 3px 5px;
     /* Deliberately more opaque than the old 0.72 outer-panel tint.
        All three columns use the same paint as the SKYNET status tab. */
-    background-color: rgba(7, 20, 36, 0.92);
+    background-color: rgba(7, 20, 36, 235);
 }
 .scroller {
     display: block;
@@ -149,7 +151,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 }
 .splitter:hover { background-color: transparent; }
 #skynet-panel.layout-edit .splitter:hover {
-    background-color: rgba(64, 138, 170, 0.80);
+    background-color: rgba(64, 138, 170, 204);
 }
 #resize-grip {
     position: absolute;
@@ -158,7 +160,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     bottom: 1px;
     width: 15px;
     height: 15px;
-    background-color: rgba(57, 130, 160, 0.80);
+    background-color: rgba(57, 130, 160, 204);
     border-width: 1px;
     border-color: #8cc6e0;
     drag: drag;
@@ -187,7 +189,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     padding: 2px 5px;
     color: #f3faff;
     /* Strong contrast even when the HUD panel is nearly invisible. */
-    background-color: rgba(16, 40, 59, 0.94);
+    background-color: rgba(16, 40, 59, 240);
     border-width: 1px;
     border-color: #75badb;
     font-size: 13px;
