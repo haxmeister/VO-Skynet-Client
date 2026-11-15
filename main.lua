@@ -64,20 +64,23 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
--- Reversible keyboard routing test based on Draugath's MDI-Core:
+-- Reversible keyboard routing tests based on Draugath's MDI-Core:
 -- Game.SetInputMode(false) while interacting; true for normal flight.
 -- The previous Game.SetInputMode(0) test was NOT equivalent: Lua 0 is true.
--- Only the explicitly selected 'hud' test briefly hides HUD.dlg.
--- Neither test moves or reparents any native IUP control.
+-- 'rml' leaves IUP alone; 'hud' hides HUD.dlg; 'active' leaves it visible
+-- and temporarily disables IUP interaction by setting HUD.dlg.active = "NO".
+-- No test reparents any native IUP control.
 local chat_input_mode = "native" -- default remains the proven VO prompt
 local flight_input_paused = false
 local hidden_hud_dialog = nil
 local hud_temporarily_hidden = false
+local inactive_hud_dialog = nil
+local prior_hud_active = nil
 local input_trial_serial = 0
 local input_recovery_timer = Timer()
 
 -- This handler runs only for the inline RmlUi input.
--- 'hud' mode additionally removes the IUP HUD from the event stack.
+-- 'hud' hides the HUD; 'active' disables its IUP input without hiding it.
 ui:set_chat_focus_handler(function(open)
     input_trial_serial = input_trial_serial + 1
     if open then
@@ -102,6 +105,36 @@ ui:set_chat_focus_handler(function(open)
                 return false
             end
             print("Skynet UI: temporarily hid IUP HUD for RmlUi focus test")
+        elseif chat_input_mode == "active" then
+            local available, dlg = pcall(function() return HUD and HUD.dlg end)
+            if not available or not dlg then
+                print("Skynet UI: HUD.dlg unavailable; ACTIVE experiment aborted")
+                return false
+            end
+            local ok_previous, previous = pcall(function() return dlg.active end)
+            if not ok_previous then
+                print("Skynet UI: cannot read HUD.dlg.active; ACTIVE experiment aborted")
+                return false
+            end
+            -- IUP defaults ACTIVE to YES when the attribute is unset.
+            -- Restore the original explicit value (or YES) on every exit.
+            inactive_hud_dialog = dlg
+            prior_hud_active = previous or "YES"
+            local ok_inactive, inactive_err = pcall(function()
+                dlg.active = "NO"
+            end)
+            if not ok_inactive then
+                pcall(function() dlg.active = prior_hud_active end)
+                inactive_hud_dialog = nil
+                prior_hud_active = nil
+                print("Skynet UI: cannot set HUD.dlg.active=NO: "
+                    .. tostring(inactive_err))
+                return false
+            end
+            local ok_readback, current = pcall(function() return dlg.active end)
+            print("Skynet UI: HUD remains visible; ACTIVE changed from "
+                .. tostring(previous) .. " to "
+                .. (ok_readback and tostring(current) or "(readback unavailable)"))
         end
         local ok_mode, mode_err = pcall(Game.SetInputMode, false)
         if not ok_mode then
@@ -139,6 +172,24 @@ ui:set_chat_focus_handler(function(open)
             else
                 print("Skynet UI: ShowDialog unavailable; ReloadInterface may be needed")
             end
+        end
+    end
+
+    -- Restore IUP interaction before returning control to the ship, including
+    -- a failed focus or Game.SetInputMode(false) call.
+    if inactive_hud_dialog then
+        local dlg = inactive_hud_dialog
+        local original = prior_hud_active or "YES"
+        inactive_hud_dialog = nil
+        prior_hud_active = nil
+        local ok_active, active_err = pcall(function()
+            dlg.active = original
+        end)
+        if not ok_active then
+            print("Skynet UI: FAILED to restore HUD.dlg.active: "
+                .. tostring(active_err) .. "; ReloadInterface may be needed")
+        else
+            print("Skynet UI: restored HUD.dlg.active=" .. tostring(original))
         end
     end
 
@@ -267,7 +318,8 @@ local function activate_chat()
     if not ui.visible then return end
     if ui.chat_input_open then
         ui:cancel_chat()
-    elseif chat_input_mode == "rml" or chat_input_mode == "hud" then
+    elseif chat_input_mode == "rml" or chat_input_mode == "hud"
+        or chat_input_mode == "active" then
         if not ui:begin_chat() then
             print("Skynet UI: RmlUi chat input could not open; "
                 .. "use /skynetui input native to revert")
@@ -277,7 +329,7 @@ local function activate_chat()
     end
 end
 
--- /skynetui hide|show|demo|chat|input rml|hud|native
+-- /skynetui hide|show|demo|chat|input rml|hud|active|native
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -291,7 +343,7 @@ RegisterUserCommand("skynetui", function(_, args)
         return
     elseif command == "input" then
         local mode = args and args[2]
-        if mode == "rml" or mode == "hud" then
+        if mode == "rml" or mode == "hud" or mode == "active" then
             -- Never combine this test with the unverified IUP relocation test.
             if not NativeChat.restore(ui) then
                 print("Skynet UI: restore IUP chat first; input mode unchanged")
@@ -299,7 +351,7 @@ RegisterUserCommand("skynetui", function(_, args)
             end
             ui:cancel_chat()
             chat_input_mode = mode
-            ui:set_chat_diagnostics(mode == "hud")
+            ui:set_chat_diagnostics(mode == "hud" or mode == "active")
             print("Skynet UI: Shift+A now tests inline RmlUi input (" .. mode
                 .. "); auto-recovery after 12 seconds")
         elseif mode == "native" then
@@ -308,7 +360,7 @@ RegisterUserCommand("skynetui", function(_, args)
             ui:set_chat_diagnostics(false)
             print("Skynet UI: Shift+A restored to native VO prompt")
         else
-            print("Skynet UI: /skynetui input rml|hud|native")
+            print("Skynet UI: /skynetui input rml|hud|active|native")
         end
         return
     elseif command == "native" then
@@ -343,4 +395,4 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
     end
 end
 
-print("Skynet UI prototype loaded; Shift+A opens native chat; /skynetui input rml|hud|native")
+print("Skynet UI prototype loaded; Shift+A opens native chat; /skynetui input rml|hud|active|native")
