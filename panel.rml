@@ -15,13 +15,16 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: rgba(7, 20, 36, 0.82);
-    border-width: 1px;
-    border-color: #3f7799;
+    /* Normal flight: a restrained tint, no visible window outline.
+       /skynetui layout restores a stronger frame via ui.lua. */
+    background-color: rgba(7, 20, 36, 0.72);
+    border-width: 0px;
+    border-color: transparent;
     border-radius: 5px;
 }
 #skynet-header {
-    display: flex;
+    /* Layout-only chrome; ui.lua switches this to flex while editing. */
+    display: none;
     flex: 0 0 auto;
     box-sizing: border-box;
     width: 100%;
@@ -121,7 +124,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     /* One visual separator, with an 8px drag hit area. */
     background-color: transparent;
     border-width: 0px;
-    border-left-width: 1px;
+    /* Layout mode turns on this single separator line. Keep the 8px
+       draggable region and the three column widths unchanged. */
+    border-left-width: 0px;
     border-color: #386984;
     drag: drag;
 }
@@ -161,7 +166,8 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     margin: 0;
     padding: 2px 5px;
     color: #f3faff;
-    background-color: #10283b;
+    /* Strong contrast even when the HUD panel is nearly invisible. */
+    background-color: rgba(16, 40, 59, 0.94);
     border-width: 1px;
     border-color: #75badb;
     font-size: 13px;
