@@ -5,7 +5,46 @@ local InputRouter = dofile("rmlui_input.lua")
 local TextEntry = dofile("rmlui_text_entry.lua")
 
 local CHAT_RECOVERY_TIMEOUT_MS = 12000 -- 0 disables automatic recovery.
-local ui = UI.new({ visible = false, text_entry_class = TextEntry })
+
+-- Save the window and column widths using VO's existing preference storage.
+-- If a given client build blocks custom prefs, the layout still works for
+-- the current session; failed read/write calls are ignored.
+local LAYOUT_PREF = "skynetui.layout.v1"
+local function load_geometry()
+    if not Game or type(Game.GetPrefString) ~= "function" then return nil end
+    local ok, raw = pcall(Game.GetPrefString, LAYOUT_PREF, "")
+    if not ok or type(raw) ~= "string" then return nil end
+    local values = {}
+    for value in raw:gmatch("[^,]+") do
+        values[#values + 1] = tonumber(value)
+    end
+    if #values ~= 6 then return nil end
+    for i = 1, 6 do
+        if type(values[i]) ~= "number" then return nil end
+    end
+    return {
+        left = values[1], top = values[2], width = values[3],
+        height = values[4], online = values[5], sightings = values[6],
+    }
+end
+local function save_geometry(geometry)
+    if not Game or type(Game.SetPrefString) ~= "function" then return end
+    local packed = table.concat({
+        geometry.left, geometry.top, geometry.width,
+        geometry.height, geometry.online, geometry.sightings,
+    }, ",")
+    local ok, err = pcall(Game.SetPrefString, LAYOUT_PREF, packed)
+    if not ok then
+        print("Skynet UI: layout preference save failed: " .. tostring(err))
+    end
+end
+
+local ui = UI.new({
+    visible = false,
+    text_entry_class = TextEntry,
+    load_geometry = load_geometry,
+    save_geometry = save_geometry,
+})
 
 -- RmlUi documents must be loaded in this plugin entry point so VO resolves
 -- panel.rml relative to this plugin.
@@ -75,6 +114,26 @@ local router = InputRouter.new({
         end
     end,
 })
+
+ui:set_layout_focus_handler(function(open)
+    if open then
+        local allowed, reason = router:acquire("layout", function()
+            ui:set_layout_editing(false)
+        end, 0)
+        if not allowed then
+            print("Skynet UI: cannot enter layout editing: " .. tostring(reason))
+            return false
+        end
+        if gkinterface and type(gkinterface.ShowMouse) == "function" then
+            local ok_mouse, mouse_err = pcall(gkinterface.ShowMouse)
+            if not ok_mouse then
+                print("Skynet UI: unable to show layout mouse: " .. tostring(mouse_err))
+            end
+        end
+        return true
+    end
+    return router:release("layout")
+end)
 
 ui:set_chat_focus_handler(function(open)
     if open then
@@ -182,6 +241,10 @@ ticker:SetTimeout(1000, refresh)
 local function activate_chat()
     sync_visibility()
     if not ui.visible then return end
+    if ui.layout_editing then
+        print("Skynet UI: finish layout editing with DONE before opening chat")
+        return
+    end
     if ui.chat_input_open then
         ui:cancel_chat()
     elseif chat_input_mode == "native" then
@@ -191,15 +254,41 @@ local function activate_chat()
     end
 end
 
--- /skynetui hide|show|demo|chat|input rml|native
+-- /skynetui hide|show|demo [flood]|chat|layout|resetlayout|input rml|native
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
         user_wants_visible = false
     elseif command == "demo" then
         user_wants_visible = true
-        ui:add_chat("Raven", "New demo message.")
-        ui:add_sighting("Drake", "Vult", "Odia M-14")
+        if args and args[2] == "flood" then
+            for i = 1, 40 do
+                ui:add_chat("DEMO", "Scrolling test message " .. i
+                    .. ": this intentionally long chat entry should wrap within"
+                    .. " the panel and never push the input below the viewport.")
+            end
+            print("Skynet UI: added 40 messages to test chat scroll")
+        else
+            ui:add_chat("Raven", "New demo message.")
+            ui:add_sighting("Drake", "Vult", "Odia M-14")
+        end
+    elseif command == "layout" then
+        sync_visibility()
+        if not ui.visible then
+            print("Skynet UI: layout editing is available while flying")
+            return
+        end
+        ui:cancel_chat()
+        local enabled = not ui.layout_editing
+        if ui:set_layout_editing(enabled) and enabled then
+            print("Skynet UI: drag SKYNET title to move; drag separators to"
+                .. " resize columns; drag bottom-right square to resize;"
+                .. " click DONE to finish")
+        end
+        return
+    elseif command == "resetlayout" then
+        ui:reset_layout()
+        return
     elseif command == "chat" then
         activate_chat()
         return
@@ -235,4 +324,5 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
     end
 end
 
-print("Skynet UI loaded; Shift+A opens RmlUi chat; /skynetui input rml|native")
+print("Skynet UI loaded; Shift+A chat; /skynetui layout for drag/resize;"
+    .. " /skynetui demo flood tests scrolling")
