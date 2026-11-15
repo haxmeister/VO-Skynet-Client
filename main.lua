@@ -6,14 +6,35 @@ local TextEntry = dofile("rmlui_text_entry.lua")
 
 local CHAT_RECOVERY_TIMEOUT_MS = 12000 -- 0 disables automatic recovery.
 
--- Save the window and column widths using VO's existing preference storage.
--- If a given client build blocks custom prefs, the layout still works for
--- the current session; failed read/write calls are ignored.
-local LAYOUT_PREF = "skynetui.layout.v1"
+-- Persistent layout is shared across characters. gkini is VO's
+-- supported plugin configuration store; the old Game preference path is
+-- read as a migration fallback for anyone who already saved a layout.
+local LAYOUT_SECTION = "skynetui"
+local LAYOUT_KEY = "layout_v1"
+local LEGACY_LAYOUT_PREF = "skynetui.layout.v1"
+
+local function read_geometry_value()
+    if gkini and type(gkini.ReadString) == "function" then
+        local ok, value = pcall(gkini.ReadString,
+            LAYOUT_SECTION, LAYOUT_KEY, "")
+        if ok and type(value) == "string" and value ~= "" then
+            return value
+        end
+    end
+    -- The previous release used Game.GetPrefString. Import it if present,
+    -- then write through gkini at the next drag or DONE click.
+    if Game and type(Game.GetPrefString) == "function" then
+        local ok, value = pcall(Game.GetPrefString,
+            LEGACY_LAYOUT_PREF, "")
+        if ok and type(value) == "string" and value ~= "" then
+            return value
+        end
+    end
+end
+
 local function load_geometry()
-    if not Game or type(Game.GetPrefString) ~= "function" then return nil end
-    local ok, raw = pcall(Game.GetPrefString, LAYOUT_PREF, "")
-    if not ok or type(raw) ~= "string" then return nil end
+    local raw = read_geometry_value()
+    if not raw then return nil end
     local values = {}
     for value in raw:gmatch("[^,]+") do
         values[#values + 1] = tonumber(value)
@@ -27,16 +48,27 @@ local function load_geometry()
         height = values[4], online = values[5], sightings = values[6],
     }
 end
+
 local function save_geometry(geometry)
-    if not Game or type(Game.SetPrefString) ~= "function" then return end
     local packed = table.concat({
         geometry.left, geometry.top, geometry.width,
         geometry.height, geometry.online, geometry.sightings,
     }, ",")
-    local ok, err = pcall(Game.SetPrefString, LAYOUT_PREF, packed)
-    if not ok then
-        print("Skynet UI: layout preference save failed: " .. tostring(err))
+    if gkini and type(gkini.WriteString) == "function" then
+        local ok, result = pcall(gkini.WriteString,
+            LAYOUT_SECTION, LAYOUT_KEY, packed)
+        if ok and result ~= false then return true end
+        print("Skynet UI: gkini layout save failed: " .. tostring(result))
     end
+    -- Compatibility fallback for clients exposing only the older API.
+    if Game and type(Game.SetPrefString) == "function" then
+        local ok, result = pcall(Game.SetPrefString,
+            LEGACY_LAYOUT_PREF, packed)
+        if ok and result ~= false then return true end
+        print("Skynet UI: legacy layout save failed: " .. tostring(result))
+    end
+    print("Skynet UI: no writable persistent layout preference API available")
+    return false
 end
 
 local ui = UI.new({
