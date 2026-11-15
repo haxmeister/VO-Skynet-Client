@@ -188,6 +188,10 @@ function UI:bind_chat_input()
     local enter = (key_ids and key_ids.KI_RETURN) or 72
     local num_enter = (key_ids and key_ids.KI_NUMPADENTER) or 61
     local tab = (key_ids and key_ids.KI_TAB) or 70
+    local end_key = (key_ids and key_ids.KI_END) or 88
+    -- Schedule the synthetic End key for after the original Tab handler,
+    -- avoiding recursive Context::ProcessKeyDown inside its own key callback.
+    local caret_timer = Timer()
 
     local function trace(kind, extra)
         if not self.chat_diagnostics or not self.chat_input_open then return end
@@ -303,15 +307,33 @@ function UI:bind_chat_input()
         local attr_ok, attr_value = pcall(function()
             return input:GetAttribute("value")
         end)
-        local caret_ok = pcall(function()
-            input:SetSelection(#updated, #updated)
-        end)
         print("Skynet UI: native Tab completion applied; old length="
             .. #draft .. " new length=" .. #updated
-            .. " attribute_readback=" .. tostring(attr_ok and attr_value == updated)
-            .. " caret_set=" .. tostring(caret_ok))
-        -- Retain input focus after the intercepted Tab key.
-        pcall(function() input:Focus() end)
+            .. " attribute_readback=" .. tostring(attr_ok and attr_value == updated))
+        -- GetElementById returns a generic RmlUi Element. Its Lua binding
+        -- lacks the SetSelection method needed to move the text caret.
+        -- Process the native End key *after* the Tab callback returns instead.
+        -- This uses RmlUi's normal text-editing behavior to move the caret.
+        caret_timer:SetTimeout(1, function()
+            if not self.chat_input_open or self.chat_draft ~= updated then return end
+            local ctx = self.context
+            if not ctx or type(ctx.ProcessKeyDown) ~= "function" then
+                print("Skynet UI: RmlUi Context:ProcessKeyDown unavailable")
+                return
+            end
+            local focused, focus_err = pcall(function() input:Focus() end)
+            if not focused then
+                print("Skynet UI: cannot refocus input after Tab: "
+                    .. tostring(focus_err))
+                return
+            end
+            local ok_end, end_err = pcall(function()
+                ctx:ProcessKeyDown(end_key, 0)
+                ctx:ProcessKeyUp(end_key, 0)
+            end)
+            print("Skynet UI: caret-to-end via KI_END "
+                .. (ok_end and "dispatched" or ("failed: " .. tostring(end_err))))
+        end)
     end
 
     local function on_key(event, phase)
@@ -319,9 +341,9 @@ function UI:bind_chat_input()
         local p = event and event.parameters
         local key = p and p.key_identifier
         trace(phase, key or "nil")
-        if key == tab and phase == "keydown" then
+        if key == tab then
             stop(event)
-            complete_name()
+            if phase == "keydown" then complete_name() end
         elseif key == esc then
             stop(event)
             print("Skynet UI: RmlUi Escape received (" .. phase .. ")")
