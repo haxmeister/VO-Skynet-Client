@@ -59,6 +59,14 @@ Both test modes revert to VO's native prompt on the next interface load. Enter/E
 
 This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
+### Confirmed RmlUi text entry; submit and cleanup test
+
+A live test of `/skynetui input hud` confirmed that text **can** be typed inside Skynet's RmlUi field after the native IUP HUD is hidden and `Game.SetInputMode(false)` is used. However, Enter and Escape brought the HUD back without a delivered chat message, and the text remained in the field on the next attempt. This is a submit/cleanup issue, not the earlier keyboard-routing failure.
+
+This branch now adds actual **Send** (RmlUi form submit) and **Cancel** (RmlUi button) controls next to the field. The UI also checks `keydown` and `keyup` for Enter/Escape and prints diagnostics showing: the event and key identifier, whether form-submit or the Send button was used, the submitted text length **without displaying user text**, whether the UI callback delivered it, and the reason input closed. If VO independently re-shows its native HUD, the plugin logs that condition and cancels the stale input instead of leaving it active.
+
+Re-test with `/skynetui input hud`, press **Shift+A**, type a very short test message, then try the **Send** button (mouse click). Next try Enter and Escape in separate attempts. Distinguish a real submit (`LOCAL TEST` appears) from an unexpected HUD reappearance or 12-second safety timeout by checking the `Skynet UI:` and `Skynet RmlUi input:` lines in the VO errors log. The 12-second timeout and `/skynetui input native` fallback remain in place.
+
 ### Flight-only visibility
 
 The prototype is **hidden by default** on the login, character-selection, and station screens. The plugin loads RML while VO is initializing (when relative file resolution works), but displays the document only when the ship HUD is active and the client reports `HasActiveShip() == true` and `PlayerInStation() == false`.
