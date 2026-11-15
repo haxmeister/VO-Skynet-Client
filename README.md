@@ -6,7 +6,7 @@ Work is on `feature/rmlui-hud-active-test`; **do not merge into main without a s
 
 ## Features
 
-- Flight-only panel arranged between the game's native radar widgets.
+- Flight-only panel arranged between the game's native radar widgets. It hides when navigation/PDA menus take over and returns when the ship HUD is visible again.
 - Online roster with alliance colors, a **bounded scrollable chat history**, and sightings with age/expiry.
 - **Movable/resizable panel** with draggable column separators. Position, size, and column widths persist across interface reloads; the online roster can shrink to 40px.
 - **Low-chrome flight HUD:** the orange **SKYNET:** title and live colored status sit side by side at the left of a borderless title row, while the outer window outline is hidden during flight.
@@ -34,7 +34,7 @@ Place these repository files in `plugins/skynetui/`, so the plugin entry point i
 5. Enter `/skynetui layout`; mouse-drag the SKYNET title, two slim column dividers, and the bottom-right grip. Click **DONE** when finished.
 6. Use `/skynetui demo flood` to insert 40 long test messages **and six sightings aged 0%, 70%, 85%, 90%, 95%, and 98% through their TTL**, including three in the final fading window. The sightings should show progressively fainter rows and expire naturally. Chat must stay within the panel and scroll to the latest message. The scrollbar should be invisible during normal flight and reappear in `/skynetui layout`. While chatting, the input row must stay visible beneath the history.
 7. To test the other two scrollers, run `/skynetui demo scroll` to generate **32 online pilots and 24 fresh sightings**, enough to overflow both. Enter `/skynetui layout` to enable mouse input and show scrollbar thumbs. Move the wheel over **Online**, then **Sightings**: each list must scroll independently without moving the others or the HUD. Run `/skynetui demo scrollcheck` to print their `scroll_top`, viewport height and content height. Check that the scroll position increases after using the wheel and can return to zero at the top. Demo sightings expire normally after the configured TTL (60 seconds by default), so repeat `/skynetui demo scroll` to refresh the test. For top-follow verification, scroll Sightings down in layout mode, then run `/skynetui demo` or `/skynetui demo scroll`: the newest entry should appear immediately at the top, with the scroll position returning to zero. Chat should retain its own follow-to-bottom behavior.
-8. Test docking/undocking, hiding the panel, and `ReloadInterface()` while the chat field is open.
+8. **PDA regression:** While flying with Skynet visible, press **N** to open navigation. Skynet should disappear and the PDA should respond to mouse clicks. Close the PDA; Skynet should return. Repeat with `/skynetui layout` active, and again while Skynet's Shift+A chat input is open: on entering the PDA, Skynet must release its input ownership, hide, and never force flight controls over the PDA. Finish with docking/undocking and `ReloadInterface()` tests.
 
 Console commands:
 
@@ -81,6 +81,8 @@ While editing, the **outer border**, brighter single-line dividers, corner resiz
 - **Click DONE** to restore the native HUD's input and flight controls.
 - **`/skynetui resetlayout`** restores the original position and sizes.
 
+**PDA visibility and input ownership:** A ship can remain active while its navigation/PDA menu is open. Skynet therefore checks both the existing `HUD_SHOW`/`HUD_HIDE` events and the native `HUD.dlg.visible` flag, with a separate 125ms visibility check (the one-second data-update timer remains unchanged). When the HUD disappears, Skynet closes its own input or layout owner, hides the RmlUi document, and avoids calling `Game.SetInputMode(true)` over an active PDA. It returns to the flight HUD automatically. In client versions without `HUD.dlg.visible`, existing HUD events are the fallback. This path requires an in-game PDA regression test.
+
 **Styling test:** Compare normal flight with `/skynetui layout`. The header should show **SKYNET: DISCONNECTED** inside a detached four-corner rounded pill. The three columns and splitter gutters should have a **uniform 35%-transparent navy background**, including at the top: there is intentionally a hard edge instead of an experimental fade. Chat text remains fully readable while scrolling and follows the latest message after `/skynetui demo flood`. There are no ONLINE, ALLIANCE CHAT or SIGHTINGS headings. The column divider guides remain full height but gradually disappear at both ends, and text begins about 8px below the top of each column. The outer border appears only in layout mode, and Shift+A still opens the input without hiding the native HUD. The demo flood still injects six different-age sightings, which smoothly fade only during the final 15% of their lifetime.
 
 Panel position, size, and the online/sightings widths are saved after each drag, on DONE, and on `/skynetui resetlayout`. The online roster can now be narrowed to **40px** (previously 95px); the chat keeps its 160px minimum. All six layout values persist using VO's plugin configuration API, `gkini.WriteString("skynetui", "layout_v1", ...)`, and are restored via `gkini.ReadString` on startup or `ReloadInterface()`. A previously saved `Game.GetPrefString("skynetui.layout.v1", ...)` value is still accepted for migration, and the old Game save API remains a fallback if `gkini` is unavailable. For verification: enter `/skynetui layout`, move the HUD and drag the left separator nearly all the way left, click DONE, run `ReloadInterface()`, and confirm all positions and widths are restored. The `gkini` store is normally shared across characters.
@@ -95,7 +97,7 @@ If the flood still fails to reach message 40, include the three `Skynet UI: chat
 
 **Mouse interactions require layout-edit mode or another active RmlUi input owner.** This is necessary because the normal IUP flight HUD intercepts mouse input. Use `/skynetui layout` to drag the window and scrollbar; no RLB modification is required.
 
-The default chat watchdog is **12 seconds** and is configured by `CHAT_RECOVERY_TIMEOUT_MS` in `main.lua`. Set it to `0` to disable the automatic recovery for long-form inputs. On timeout or HUD shutdown, the router closes the field, restores the original IUP `ACTIVE` state, and re-enables flight input. In case of a serious input fault, use `ReloadInterface()`.
+The default chat watchdog is **12 seconds** and is configured by `CHAT_RECOVERY_TIMEOUT_MS` in `main.lua`. Set it to `0` to disable the automatic recovery for long-form inputs. On timeout or normal in-flight close, the router closes the field, restores the original IUP `ACTIVE` state, and re-enables flight input. On PDA/HUD shutdown, it does not force flight input over the game menu. In case of a serious input fault, use `ReloadInterface()`.
 
 ## Reusable input modules
 
