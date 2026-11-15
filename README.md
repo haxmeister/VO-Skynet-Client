@@ -9,6 +9,8 @@ Work is on `feature/rmlui-hud-active-test`; **do not merge into main without a s
 - Flight-only panel arranged between the game's native radar widgets.
 - Online roster with alliance colors, a **bounded scrollable chat history**, and sightings with age/expiry.
 - **Movable/resizable panel** with draggable column separators and saved layout preferences.
+- **Low-chrome flight HUD:** title/header, window outline, and divider lines are hidden during normal flight, but all return while editing the layout.
+- **Modest background tint:** normal flight uses a slightly softer translucent panel (0.72 versus 0.82 in layout mode). The chat input remains dark for readability.
 - The text-entry row remains fully visible below the chat scrollbar.
 - **Shift+A** opens the RmlUi chat text field; Enter submits a local `LOCAL TEST` message, Escape cancels.
 - The native HUD and radar **remain visible** while typing.
@@ -26,7 +28,7 @@ Place these repository files in `plugins/skynetui/`, so the plugin entry point i
 3. Type `lost` (after encountering a player called Lost Crow), press **Tab**, and continue typing. The caret should be after `Lost Crow`, not in its middle.
 4. Press **Escape** during another message. Flight controls should return.
 5. Enter `/skynetui layout`; mouse-drag the SKYNET title, two slim column dividers, and the bottom-right grip. Click **DONE** when finished.
-6. Use `/skynetui demo flood` to insert 40 long test messages. The chat must stay within the panel, and a visible scrollbar must appear. While chatting, the input row must stay visible beneath the history.
+6. Use `/skynetui demo flood` to insert 40 long test messages. The chat must stay within the panel, scroll to the latest message, and retain its visible scrollbar. While chatting, the input row must stay visible beneath the history.
 7. Test docking/undocking, hiding the panel, and `ReloadInterface()` while the chat field is open.
 
 Console commands:
@@ -53,13 +55,17 @@ The panel starts at its original radar-safe position. To interact with its frame
 /skynetui layout
 ```
 
-While editing, the native HUD **remains visible** but its IUP input is temporarily disabled so RmlUi can receive mouse drag events. The cursor is shown, and the flight-control input mode is temporarily disabled.
+In normal flight, the title/header, outer border, and divider lines are hidden; the full panel height belongs to the three content columns, including the chat history and reserved text-entry row. The invisible separators retain their widths so existing column geometry and saved layouts do not change.
+
+While editing, the **SKYNET** title/header, outer border, single-line dividers, corner resize grip, and DONE control reappear. The native HUD **remains visible** but its IUP input is temporarily disabled so RmlUi can receive mouse drag events. The cursor is shown, and the flight-control input mode is temporarily disabled.
 
 - **Drag the SKYNET header** to move the entire panel.
 - **Drag the lower-right square** to change width and height.
 - **Drag the two thin dividers** to change the online/chat/sightings column proportions.
 - **Click DONE** to restore the native HUD's input and flight controls.
 - **`/skynetui resetlayout`** restores the original position and sizes.
+
+**Styling test:** Compare normal flight with `/skynetui layout`. The title/header, window outline, and column lines should appear only in edit mode. After clicking DONE, the chat list should reclaim the header's 25px rather than leaving a blank strip. The RmlUi text field should remain prominent when Shift+A opens it. No compact/expanded mode or HUD-hiding behavior was added.
 
 Panel dimensions and divider widths are constrained to remain on-screen when possible. The plugin attempts to store the six layout values in VO's `Game.SetPrefString("skynetui.layout.v1", ...)` preference and to reload them when the interface restarts. The layout remains editable for the current session if the VO build does not persist custom preference keys.
 
