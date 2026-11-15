@@ -99,7 +99,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     overflow: hidden;
     min-width: 0;
     min-height: 0;
-    padding: 3px 5px;
+    /* 8px top inset is about half of a 16px text line; keep the
+       existing 5px side and 3px bottom padding. */
+    padding: 8px 5px 3px;
     /* The shared row background also covers splitter gutters. The
        individual sections stay clear to avoid double-tinting. */
     background-color: transparent;
@@ -146,15 +148,54 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-width: 0px;
     drag: drag;
 }
+/* Three 1px line segments avoid an all-over washed-out gradient:
+   a 12px fade-in, a solid center, and a 12px fade-out. The same original
+   8px splitter remains the full-height drag target. */
 .splitter-guide {
-    display: block;
+    display: flex;
+    flex-direction: column;
     width: 1px;
-    /* No column titles: guides run from the top to the bottom of
-       each full-height splitter. ui.lua sets the exact height. */
-    margin-top: 0px;
     height: 100%;
-    background-color: #4c7188;
+    margin-top: 0px;
+    background-color: transparent;
     pointer-events: none;
+}
+.splitter-guide-end {
+    display: block;
+    flex: 0 0 auto;
+    width: 1px;
+    height: 12px;
+}
+.splitter-guide-top {
+    decorator: vertical-gradient(
+        rgba(76, 113, 136, 0) rgba(76, 113, 136, 255)
+    );
+}
+.splitter-guide-middle {
+    display: block;
+    flex: 1 1 auto;
+    width: 1px;
+    min-height: 0;
+    background-color: #4c7188;
+}
+.splitter-guide-bottom {
+    decorator: vertical-gradient(
+        rgba(76, 113, 136, 255) rgba(76, 113, 136, 0)
+    );
+}
+/* Brighter guides in layout editing, including both faded ends. */
+#skynet-panel.layout-edit .splitter-guide-middle {
+    background-color: #75a9c8;
+}
+#skynet-panel.layout-edit .splitter-guide-top {
+    decorator: vertical-gradient(
+        rgba(117, 169, 200, 0) rgba(117, 169, 200, 255)
+    );
+}
+#skynet-panel.layout-edit .splitter-guide-bottom {
+    decorator: vertical-gradient(
+        rgba(117, 169, 200, 255) rgba(117, 169, 200, 0)
+    );
 }
 .splitter:hover { background-color: transparent; }
 #skynet-panel.layout-edit .splitter:hover {
@@ -261,14 +302,14 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
       <div id="online-panel" class="section">
         <div id="online-list" class="scroller"></div>
       </div>
-      <div id="split-left" class="splitter"><div id="split-left-guide" class="splitter-guide"></div></div>
+      <div id="split-left" class="splitter"><div id="split-left-guide" class="splitter-guide"><div class="splitter-guide-end splitter-guide-top"></div><div class="splitter-guide-middle"></div><div class="splitter-guide-end splitter-guide-bottom"></div></div></div>
       <div id="chat-panel" class="section">
         <div id="chat-list" class="scroller"></div>
         <form id="chat-form">
           <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
         </form>
       </div>
-      <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"></div></div>
+      <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"><div class="splitter-guide-end splitter-guide-top"></div><div class="splitter-guide-middle"></div><div class="splitter-guide-end splitter-guide-bottom"></div></div></div>
       <div id="sightings-panel" class="section">
         <div id="sightings-list" class="scroller"></div>
       </div>
