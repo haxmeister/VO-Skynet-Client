@@ -56,7 +56,7 @@ The panel starts at its original radar-safe position. To interact with its frame
 /skynetui layout
 ```
 
-In normal flight, the title/header and outer border are hidden. The two vertical column separators remain as **faint, one-pixel guides**. The full panel height belongs to the three content columns, including the chat history and reserved text-entry row. The splitter hit areas remain 8px wide so the saved column geometry does not change.
+In normal flight, the title/header and outer border are hidden. The two vertical column separators remain as **one-pixel, muted steel-blue guides**. These are real 1px elements (not alpha-blended borders), because the transparent-border approach was invisible in VO. The surrounding 8px gutters still provide the same draggable hit areas. The full panel height belongs to the three content columns, including the chat history and reserved text-entry row. The splitter hit areas remain 8px wide so the saved column geometry does not change.
 
 The chat scrollbar is **visually transparent outside layout mode**; RmlUi still creates it with its original 11px width, and the chat retains overflow scrolling and automatic follow-to-bottom. In layout-edit mode, the scrollbar track and thumb regain their colors, making it easy to inspect or scroll the history while adjusting the panel. A `layout-edit` class on the panel controls scrollbar styling without changing the scroll mechanics.
 
@@ -68,7 +68,7 @@ While editing, the **SKYNET** title/header, outer border, single-line dividers, 
 - **Click DONE** to restore the native HUD's input and flight controls.
 - **`/skynetui resetlayout`** restores the original position and sizes.
 
-**Styling test:** Compare normal flight with `/skynetui layout`. The title/header and window outline should appear only in edit mode; the column lines should change from very faint to clearly visible, and the scrollbar should switch from invisible to styled. After clicking DONE, the chat list should reclaim the header's 25px instead of leaving a blank strip. Verify that `/skynetui demo flood` still follows the latest message and Shift+A keeps the input field visible. No compact/expanded mode or HUD-hiding behavior was added.
+**Styling test:** Compare normal flight with `/skynetui layout`. The title/header and window outline should appear only in edit mode; the two thin blue-grey lines should remain visible in normal flight and become brighter in layout mode, and the scrollbar should switch from invisible to styled. After clicking DONE, the chat list should reclaim the header's 25px instead of leaving a blank strip. Verify that `/skynetui demo flood` still follows the latest message and Shift+A keeps the input field visible. No compact/expanded mode or HUD-hiding behavior was added.
 
 Panel dimensions and divider widths are constrained to remain on-screen when possible. The plugin attempts to store the six layout values in VO's `Game.SetPrefString("skynetui.layout.v1", ...)` preference and to reload them when the interface restarts. The layout remains editable for the current session if the VO build does not persist custom preference keys.
 
