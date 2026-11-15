@@ -57,7 +57,6 @@ function UI.new(options)
     self.chat_draft = ""
     self.chat_listeners_bound = false
     self.chat_diagnostics = false
-    self.chat_diagnostic_events = 0
     self.on_chat_submit = options.on_chat_submit
     self.on_chat_focus = options.on_chat_focus
     self.text_entry_class = options.text_entry_class
@@ -83,7 +82,9 @@ function UI:mount(context, document)
     self.document = document
     self:layout()
     self:render()
-    self:bind_chat_input()
+    if not self:bind_chat_input() then
+        return false, "chat input initialization failed"
+    end
     if self.visible then
         document:Show()
     else
@@ -129,6 +130,7 @@ function UI:unmount()
         self.document = nil
     end
     self.chat_listeners_bound = false
+    self.chat_entry = nil
 end
 
 function UI:show()
