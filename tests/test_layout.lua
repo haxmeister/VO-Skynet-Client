@@ -95,6 +95,19 @@ local ui = UI.new({
     end,
     on_chat_focus = function() return true end,
 })
+-- The RML owns the tab and section fill; verify they use an identical
+-- color and the title remains its own small, orange label.
+local rml_file = assert(io.open("panel.rml", "r"))
+local rml_source = rml_file:read("*a")
+rml_file:close()
+local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
+local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
+local shared_fill = "background-color: rgba(7, 20, 36, 0.92);"
+assert(tab_css:find(shared_fill, 1, true))
+assert(section_css:find(shared_fill, 1, true))
+assert(rml_source:find("padding: 0px 3px 4px;", 1, true))
+assert(rml_source:find('id="skynet-title">SKYNET:</span>', 1, true))
+
 assert(ui:mount(ctx, doc))
 -- Normal flight keeps its title + connection indicator, not the frame.
 assert(nodes["skynet-header"].style.display == "flex")
@@ -105,8 +118,7 @@ assert(nodes["connection-status"].inner_rml:find(">CONNECTED<", 1, true))
 ui:set_connected(false)
 assert(nodes["connection-status"].inner_rml:find(">DISCONNECTED<", 1, true))
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
-assert(nodes["skynet-panel"].style["background-color"]
-    == "rgba(7, 20, 36, 0.72)")
+assert(nodes["skynet-panel"].style["background-color"] == "transparent")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
@@ -251,8 +263,7 @@ assert(ui.layout_editing)
 assert(nodes["skynet-header"].style.display == "flex")
 assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "1px")
-assert(nodes["skynet-panel"].style["background-color"]
-    == "rgba(7, 20, 36, 0.82)")
+assert(nodes["skynet-panel"].style["background-color"] == "transparent")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
@@ -341,4 +352,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: header-only Skynet/status, reclaimed column heading space, full-height guides, flood follow")
+print("PASS: matched Skynet tab/column background, transparent frame, full-height guides, flood follow")
