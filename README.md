@@ -65,7 +65,9 @@ Panel dimensions and divider widths are constrained to remain on-screen when pos
 
 The chat list now has an explicit pixel height separate from the fixed 29px input row, with `overflow-y: scroll`. Its vertical scrollbar is explicitly styled because RmlUi provides no built-in scrollbar appearance. The scroll area shrinks when Shift+A opens the input, then grows back when input closes. The rest of the panel is clipped so text cannot paint past the bottom of the window.
 
-**Follow-up fixes:** Each movable column separator now draws one line, not two border lines. New messages follow the bottom of the chat history **after** RmlUi recalculates its scroll height; a 40ms deferred scroll prevents the original premature-scroll bug during `/skynetui demo flood`. Repeated messages coalesce into one pending timer. A user who manually scrolls upward stays at the chosen position; returning to the bottom re-enables following.
+**Follow-up fixes:** Each movable column separator now draws one line, not two border lines. The bottom-right resize square is shown **only during `/skynetui layout`**; it is hidden in normal flight/chat mode. New messages follow the bottom after RmlUi recalculates their scroll height. A user who manually scrolls upward stays at the chosen position; returning to the bottom re-enables following.
+
+**Flood-specific correction:** RmlUi generates `scroll` events for DOM relayout as well as actual user scrolling. The plugin now changes follow mode only in response to user mouse scrolling/dragging rather than treating relayout as manual input. `/skynetui demo flood` also inserts all 40 messages with **one chat render** and explicitly follows the latest message instead of repeatedly rebuilding the list. Ordinary messages still preserve your position when you intentionally scroll up.
 
 **Mouse interactions require layout-edit mode or another active RmlUi input owner.** This is necessary because the normal IUP flight HUD intercepts mouse input. Use `/skynetui layout` to drag the window and scrollbar; no RLB modification is required.
 
