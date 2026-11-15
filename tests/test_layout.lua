@@ -107,8 +107,8 @@ local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
 local angle_css = assert(rml_source:match("%.tab%-angle%-step%s*{([^}]+)}"))
--- RmlUi rgba() alpha is 0..255; 170 is about 67% opacity.
-local shared_fill = "background-color: rgba(7, 20, 36, 170);"
+-- 35% transparency means 65% opacity: alpha=166/255 in RmlUi.
+local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
 assert(row_css:find(shared_fill, 1, true))
 assert(angle_css:find(shared_fill, 1, true))
@@ -128,6 +128,7 @@ assert(rml_source:find('id="skynet-tab"', 1, true))
 -- It must not intercept the chat's wheel or drag events.
 local fade_css = assert(rml_source:match("#chat%-top%-fade%s*{([^}]+)}"))
 assert(fade_css:find("position: absolute;", 1, true))
+assert(fade_css:find("top: 11px;", 1, true))
 assert(fade_css:find("pointer-events: none;", 1, true))
 assert(fade_css:find("decorator: vertical-gradient(", 1, true))
 assert(fade_css:find("rgba(7, 20, 36, 240)", 1, true))
@@ -406,4 +407,43 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: 67%-opaque panel, shader-free chat top fade, scroll visibility, gutter fill, resize")
+-- Sighting expiration should fade the entire row (all colored text and
+-- timer label) smoothly on each repaint, then remove it at TTL.
+local fake_time = 5000
+local sighting_node = element("sightings-list")
+local sighting_ui = UI.new({
+    clock = function() return fake_time end,
+    sighting_ttl = 60,
+})
+sighting_ui.document = {
+    GetElementById = function(_, id)
+        if id == "sightings-list" then return sighting_node end
+    end,
+}
+sighting_ui:add_sighting("FadePilot", "Vult", "B-8", fake_time)
+assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
+assert(sighting_node.inner_rml:find("0s</span>", 1, true))
+fake_time = 5030
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 0.56;"', 1, true))
+assert(sighting_node.inner_rml:find("30s</span>", 1, true))
+fake_time = 5059
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 0.13;"', 1, true))
+assert(sighting_node.inner_rml:find("59s</span>", 1, true))
+fake_time = 5060
+sighting_ui:tick()
+assert(sighting_ui.sightings.FadePilot == nil)
+assert(sighting_node.inner_rml == "")
+
+-- The flood command must inject sample sightings at multiple TTL phases,
+-- without changing the 40-message batch or follow-to-bottom behavior.
+local main_file = assert(io.open("main.lua", "r"))
+local main_source = main_file:read("*a")
+main_file:close()
+assert(main_source:find("local phases = {0, 0.20, 0.40, 0.60, 0.80, 0.95}", 1, true))
+assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
+assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
+assert(main_source:find("ui:follow_chat(true)", 1, true))
+
+print("PASS: 35% transparency, lower chat fade, fading/expiring sightings, flood demonstration")
