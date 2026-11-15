@@ -35,8 +35,7 @@ end
 
 local ids = {
     "skynet-panel", "skynet-header", "skynet-tab", "skynet-identity",
-    "skynet-tab-angle", "tab-angle-1", "tab-angle-2", "tab-angle-3",
-    "tab-angle-4", "skynet-columns", "skynet-title",
+    "skynet-columns", "skynet-title",
     "layout-done", "resize-grip",
     "online-panel", "online-list",
     "chat-panel", "chat-list", "chat-form", "chat-input", "chat-top-fade",
@@ -99,30 +98,21 @@ local ui = UI.new({
 })
 -- A single tinted column-row background must fill the splitter gutters.
 -- Do not also paint the .section children: that would double-stack alpha.
--- The SKYNET tab body and its stepped right tip must match that color.
+-- The SKYNET tab uses one smooth rounded top-right corner.
 local rml_file = assert(io.open("panel.rml", "r"))
 local rml_source = rml_file:read("*a")
 rml_file:close()
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
-local angle_css = assert(rml_source:match("%.tab%-angle%-step%s*{([^}]+)}"))
 -- 35% transparency means 65% opacity: alpha=166/255 in RmlUi.
 local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
 assert(row_css:find(shared_fill, 1, true))
-assert(angle_css:find(shared_fill, 1, true))
 assert(section_css:find("background-color: transparent;", 1, true))
 assert(row_css:find("padding: 0px 3px 4px;", 1, true))
--- Confirm four explicitly rendered stair steps form a 16px chamfer.
-for i = 1, 4 do
-    local rule = assert(rml_source:match(
-        "#tab%-angle%-" .. i .. "%s*{([^}]+)}"))
-    assert(rule:find("width: " .. (i * 4) .. "px;", 1, true))
-    assert(rml_source:find('id="tab-angle-' .. i
-        .. '" class="tab-angle-step"', 1, true))
-end
-assert(angle_css:find("height: 6px;", 1, true))
+assert(tab_css:find("border-radius: 5px 14px 0px 0px;", 1, true))
+assert(not rml_source:find("tab-angle", 1, true))
 assert(rml_source:find('id="skynet-tab"', 1, true))
 -- A vertex-colored overlay works without a shader-based text mask.
 -- It must not intercept the chat's wheel or drag events.
@@ -408,49 +398,79 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
--- Sighting expiration should fade the entire row (all colored text and
--- timer label) smoothly on each repaint, then remove it at TTL.
-local fake_time = 5000
-local sighting_node = element("sightings-list")
+-- Rows must persist across 1-second ticks; the fade timer updates
+-- only their style.opacity with fractional milliseconds from VO's game clock.
+-- This avoids resetting the animation and preserves the age labels.
+local fake_time, fine_ms = 5000, 1000000
+local sighting_list = element("sightings-list")
+local sighting_row = element("sighting-row-1")
+local sighting_age = element("sighting-age-1")
+local fade_timer = {schedule_count = 0}
+function fade_timer:SetTimeout(ms, callback)
+    self.duration = ms
+    self.callback = callback
+    self.schedule_count = self.schedule_count + 1
+end
+function fade_timer:Kill() self.callback = nil end
 local sighting_ui = UI.new({
     clock = function() return fake_time end,
+    sighting_time_ms = function() return fine_ms end,
+    sighting_fade_timer = fade_timer,
     sighting_ttl = 60,
 })
 sighting_ui.document = {
     GetElementById = function(_, id)
-        if id == "sightings-list" then return sighting_node end
+        if id == "sightings-list" then return sighting_list end
+        if id == "sighting-row-1" then return sighting_row end
+        if id == "sighting-age-1" then return sighting_age end
     end,
 }
 sighting_ui:add_sighting("FadePilot", "Vult", "B-8", fake_time)
-assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
-assert(sighting_node.inner_rml:find("0s</span>", 1, true))
--- Rows stay 100% opaque until their last 15% (51s out of 60s).
-fake_time = 5030
+local original_rml = sighting_list.inner_rml
+assert(original_rml:find('id="sighting-row-1"', 1, true))
+assert(original_rml:find('id="sighting-age-1"', 1, true))
+assert(original_rml:find('style="opacity: 1.0000;"', 1, true))
+assert(fade_timer.schedule_count == 1)
+assert(fade_timer.duration == 1000) -- Not 25fps before fading begins.
+
+fake_time, fine_ms = 5030, 1030000
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
-assert(sighting_node.inner_rml:find("30s</span>", 1, true))
-fake_time = 5050
+assert(sighting_list.inner_rml == original_rml)
+assert(sighting_age.inner_rml == "30s")
+assert(sighting_row.style.opacity == nil) -- No repaint before 85% TTL.
+
+fake_time, fine_ms = 5051, 1051000
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
-fake_time = 5051
+assert(sighting_list.inner_rml == original_rml)
+assert(sighting_age.inner_rml == "51s")
+assert(sighting_row.style.opacity == nil)
+
+fake_time, fine_ms = 5054, 1054000
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
--- Final 9 seconds of the 60-second TTL blend toward 12%.
-fake_time = 5054
+assert(sighting_row.style.opacity == "0.7067")
+assert(sighting_age.inner_rml == "54s")
+assert(sighting_list.inner_rml == original_rml)
+-- Timer pulses continue at 25 frames per second once fading begins.
+local pulse = assert(fade_timer.callback)
+fine_ms = 1054250
+pulse()
+assert(fade_timer.duration == 40)
+assert(sighting_row.style.opacity == "0.6822")
+assert(sighting_list.inner_rml == original_rml)
+pulse = assert(fade_timer.callback)
+fine_ms = 1054500
+pulse()
+assert(sighting_row.style.opacity == "0.6578")
+assert(sighting_age.inner_rml == "54s") -- Timer leaves age label alone.
+
+fake_time, fine_ms = 5059, 1059000
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 0.71;"', 1, true))
-assert(sighting_node.inner_rml:find("54s</span>", 1, true))
-fake_time = 5057
-sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 0.41;"', 1, true))
-fake_time = 5059
-sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 0.22;"', 1, true))
-assert(sighting_node.inner_rml:find("59s</span>", 1, true))
-fake_time = 5060
+assert(sighting_row.style.opacity == "0.2178")
+assert(sighting_age.inner_rml == "59s")
+fake_time, fine_ms = 5060, 1060000
 sighting_ui:tick()
 assert(sighting_ui.sightings.FadePilot == nil)
-assert(sighting_node.inner_rml == "")
+assert(sighting_list.inner_rml == "")
 
 -- The flood command must inject sample sightings at multiple TTL phases,
 -- without changing the 40-message batch or follow-to-bottom behavior.
@@ -462,4 +482,4 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: chat fade covers first line, sightings fade only in last 15%, flood samples")
+print("PASS: smooth millisecond sighting fade, stable DOM, age labels, rounded tab and chat fade")
