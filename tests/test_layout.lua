@@ -39,7 +39,7 @@ local ids = {
     "online-panel", "online-list", "online-count",
     "chat-panel", "chat-list", "chat-form", "chat-input",
     "sightings-panel", "sightings-list", "connection-status",
-    "split-left", "split-right",
+    "split-left", "split-right", "split-left-guide", "split-right-guide",
 }
 local nodes = {}
 for _, id in ipairs(ids) do nodes[id] = element(id) end
@@ -101,12 +101,10 @@ assert(nodes["skynet-header"].style.display == "none")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.72)")
-assert(nodes["split-left"].style["border-left-width"] == "1px")
-assert(nodes["split-right"].style["border-left-width"] == "1px")
-assert(nodes["split-left"].style["border-color"]
-    == "rgba(56, 105, 132, 0.24)")
-assert(nodes["split-right"].style["border-color"]
-    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["split-left"].style["border-width"] == "0px")
+assert(nodes["split-right"].style["border-width"] == "0px")
+assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
+assert(nodes["split-right-guide"].style["background-color"] == "#4c7188")
 assert(nodes["skynet-panel"].classes["layout-edit"] == false)
 assert(nodes["resize-grip"].style.display == "none")
 -- Initial mount may schedule a follow-to-bottom. Flush it before checking.
@@ -238,10 +236,10 @@ assert(nodes["skynet-header"].style.display == "flex")
 assert(nodes["skynet-panel"].style["border-width"] == "1px")
 assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.82)")
-assert(nodes["split-left"].style["border-left-width"] == "1px")
-assert(nodes["split-right"].style["border-left-width"] == "1px")
-assert(nodes["split-left"].style["border-color"] == "#386984")
-assert(nodes["split-right"].style["border-color"] == "#386984")
+assert(nodes["split-left"].style["border-width"] == "0px")
+assert(nodes["split-right"].style["border-width"] == "0px")
+assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
+assert(nodes["split-right-guide"].style["background-color"] == "#75a9c8")
 assert(nodes["skynet-panel"].classes["layout-edit"] == true)
 assert(nodes["chat-list"].style.height == "111px")
 assert(nodes["layout-done"].style.display == "block")
@@ -301,12 +299,10 @@ nodes["layout-done"]:dispatch("click")
 assert(not ui.layout_editing)
 assert(nodes["skynet-header"].style.display == "none")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
-assert(nodes["split-left"].style["border-left-width"] == "1px")
-assert(nodes["split-right"].style["border-left-width"] == "1px")
-assert(nodes["split-left"].style["border-color"]
-    == "rgba(56, 105, 132, 0.24)")
-assert(nodes["split-right"].style["border-color"]
-    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["split-left"].style["border-width"] == "0px")
+assert(nodes["split-right"].style["border-width"] == "0px")
+assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
+assert(nodes["split-right-guide"].style["background-color"] == "#4c7188")
 assert(nodes["skynet-panel"].classes["layout-edit"] == false)
 assert(nodes["layout-done"].style.display == "none")
 assert(nodes["resize-grip"].style.display == "none")
@@ -319,4 +315,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: hidden scrollbars via layout class, faint dividers, callable Timer, flood follow, resize")
+print("PASS: solid 1px splitter guides, hidden scrollbars, callable Timer, flood follow, resize")
