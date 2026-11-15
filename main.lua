@@ -70,9 +70,13 @@ end
 -- We do not touch HUD.dlg or move the native IUP chat widget.
 local chat_input_mode = "native" -- default remains the proven VO prompt
 local flight_input_paused = false
+local hidden_hud_dialog = nil
+local hud_temporarily_hidden = false
 local input_trial_serial = 0
 local input_recovery_timer = Timer()
 
+-- This handler runs only for the inline RmlUi input.
+-- 'hud' mode additionally removes the IUP HUD from the event stack.
 ui:set_chat_focus_handler(function(open)
     input_trial_serial = input_trial_serial + 1
     if open then
@@ -80,10 +84,28 @@ ui:set_chat_focus_handler(function(open)
             print("Skynet UI: Game.SetInputMode unavailable; RmlUi input test aborted")
             return false
         end
+        if chat_input_mode == "hud" then
+            local available, dlg = pcall(function() return HUD and HUD.dlg end)
+            if not available or not dlg or type(HideDialog) ~= "function" then
+                print("Skynet UI: HUD.dlg or HideDialog unavailable; no HUD change")
+                return false
+            end
+            -- Set this before HideDialog, which may synchronously raise HUD_HIDE.
+            hud_temporarily_hidden = true
+            hidden_hud_dialog = dlg
+            local ok_hide, hide_err = pcall(HideDialog, dlg)
+            if not ok_hide then
+                hud_temporarily_hidden = false
+                hidden_hud_dialog = nil
+                print("Skynet UI: hiding IUP HUD failed: " .. tostring(hide_err))
+                return false
+            end
+            print("Skynet UI: temporarily hid IUP HUD for RmlUi focus test")
+        end
         local ok_mode, mode_err = pcall(Game.SetInputMode, false)
         if not ok_mode then
             print("Skynet UI: cannot switch to UI input: " .. tostring(mode_err))
-            return false
+            return false -- UI:begin_chat will call cancel_chat() and restore HUD.
         end
         flight_input_paused = true
         print("Skynet UI: Game.SetInputMode(false); RmlUi input requested")
@@ -91,11 +113,31 @@ ui:set_chat_focus_handler(function(open)
         local this_trial = input_trial_serial
         input_recovery_timer:SetTimeout(12000, function()
             if input_trial_serial == this_trial and ui.chat_input_open then
-                print("Skynet UI: RmlUi input test timed out; restoring flight controls")
+                print("Skynet UI: RmlUi input test timed out; restoring controls and HUD")
                 ui:cancel_chat()
             end
         end)
         return true
+    end
+
+    -- Return the native HUD first, then flight control. Do this even if the
+    -- Game.SetInputMode(false) call failed after HideDialog succeeded.
+    if hud_temporarily_hidden then
+        hud_temporarily_hidden = false
+        local dlg = hidden_hud_dialog
+        hidden_hud_dialog = nil
+        if is_flying() and dlg then
+            if type(ShowDialog) == "function" then
+                local ok_show, show_err = pcall(ShowDialog, dlg)
+                if not ok_show then
+                    print("Skynet UI: FAILED to restore HUD dialog: " .. tostring(show_err))
+                else
+                    print("Skynet UI: native HUD dialog restored")
+                end
+            else
+                print("Skynet UI: ShowDialog unavailable; ReloadInterface may be needed")
+            end
+        end
     end
 
     if flight_input_paused then
@@ -152,7 +194,8 @@ end
 local ship_hud_visible = is_flying()
 
 local function sync_visibility()
-    if user_wants_visible and ship_hud_visible and is_flying() then
+    if user_wants_visible and is_flying()
+        and (ship_hud_visible or hud_temporarily_hidden) then
         ui:show()
     else
         -- Never keep a reparented VO chat control after leaving the ship HUD.
@@ -166,6 +209,9 @@ local lifecycle = {}
 function lifecycle:OnEvent(event, view)
     if event == "HUD_SHOW" then
         ship_hud_visible = (view == "ship")
+    elseif event == "HUD_HIDE" and hud_temporarily_hidden then
+        -- Hiding the native HUD is part of this short RmlUi test.
+        -- Leave our independent RmlUi panel visible during the experiment.
     elseif event == "HUD_HIDE"
         or event == "ENTERING_STATION"
         or event == "ENTERED_STATION"
@@ -212,7 +258,7 @@ local function activate_chat()
     if not ui.visible then return end
     if ui.chat_input_open then
         ui:cancel_chat()
-    elseif chat_input_mode == "rml" then
+    elseif chat_input_mode == "rml" or chat_input_mode == "hud" then
         if not ui:begin_chat() then
             print("Skynet UI: RmlUi chat input could not open; "
                 .. "use /skynetui input native to revert")
@@ -222,7 +268,7 @@ local function activate_chat()
     end
 end
 
--- /skynetui hide|show|demo|chat|input rml|native|native probe|dock|restore
+-- /skynetui hide|show|demo|chat|input rml|hud|native
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -236,7 +282,7 @@ RegisterUserCommand("skynetui", function(_, args)
         return
     elseif command == "input" then
         local mode = args and args[2]
-        if mode == "rml" then
+        if mode == "rml" or mode == "hud" then
             -- Never combine this test with the unverified IUP relocation test.
             if not NativeChat.restore(ui) then
                 print("Skynet UI: restore IUP chat first; input mode unchanged")
@@ -244,8 +290,8 @@ RegisterUserCommand("skynetui", function(_, args)
             end
             ui:cancel_chat()
             chat_input_mode = "rml"
-            print("Skynet UI: A now tests inline RmlUi input; "
-                .. "auto-recovery after 12 seconds")
+            print("Skynet UI: A now tests inline RmlUi input (" .. mode
+                .. "); auto-recovery after 12 seconds")
         elseif mode == "native" then
             ui:cancel_chat()
             chat_input_mode = "native"
@@ -273,17 +319,17 @@ RegisterUserCommand("skynetui", function(_, args)
     sync_visibility()
 end)
 
--- Hard-code the chat hotkey to A, matching the requested behavior.
+-- Bind lowercase 'a' for the unshifted A key. In VO uppercase A means Shift+A.
 -- This deliberately replaces any existing binding for the A key.
 RegisterUserCommand("skynetui_chat", function()
     activate_chat()
 end)
 
 if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
-    local ok_bind, bind_err = pcall(gkinterface.GKProcessCommand, "bind A skynetui_chat")
+    local ok_bind, bind_err = pcall(gkinterface.GKProcessCommand, "bind a skynetui_chat")
     if not ok_bind then
         print("Skynet UI: cannot bind A to chat: " .. tostring(bind_err))
     end
 end
 
-print("Skynet UI prototype loaded; A opens native chat; /skynetui input rml|native")
+print("Skynet UI prototype loaded; A opens native chat; /skynetui input rml|hud|native")
