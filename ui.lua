@@ -220,8 +220,9 @@ function UI:layout()
     panel.style.height = px(g.height)
 
     -- Window chrome is shown only during /skynetui layout. The outer
-    -- shell stays clear; each content section and the compact SKYNET status
-    -- tab share one stronger translucent fill defined in panel.rml.
+    -- shell stays clear; one background on the entire column row fills
+    -- the splitter gaps without double-tinting the transparent sections.
+    -- The compact SKYNET tab matches that row fill in panel.rml.
     -- RmlUi's style proxy uses RCSS property names for hyphenated keys.
     local editing = self.layout_editing
     if self.layout_chrome_applied ~= editing then
