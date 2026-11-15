@@ -34,7 +34,9 @@ local function element(id)
 end
 
 local ids = {
-    "skynet-panel", "skynet-header", "skynet-identity", "skynet-columns", "skynet-title",
+    "skynet-panel", "skynet-header", "skynet-tab", "skynet-identity",
+    "skynet-tab-angle", "tab-angle-1", "tab-angle-2", "tab-angle-3",
+    "tab-angle-4", "skynet-columns", "skynet-title",
     "layout-done", "resize-grip",
     "online-panel", "online-list",
     "chat-panel", "chat-list", "chat-form", "chat-input",
@@ -95,19 +97,33 @@ local ui = UI.new({
     end,
     on_chat_focus = function() return true end,
 })
--- The RML owns the tab and section fill; verify they use an identical
--- color and the title remains its own small, orange label.
+-- A single tinted column-row background must fill the splitter gutters.
+-- Do not also paint the .section children: that would double-stack alpha.
+-- The SKYNET tab body and its stepped right tip must match that color.
 local rml_file = assert(io.open("panel.rml", "r"))
 local rml_source = rml_file:read("*a")
 rml_file:close()
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
+local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
--- RmlUi differs from browser CSS: rgba() alpha is 0..255 rather
--- than 0..1. Alpha 235 is approximately 92% opacity. A decimal 0.92
--- would leave the panes almost completely invisible.
-local shared_fill = "background-color: rgba(7, 20, 36, 235);"
+local angle_css = assert(rml_source:match("%.tab%-angle%-step%s*{([^}]+)}"))
+-- RmlUi rgba() alpha is 0..255; 185 is about 73% opacity.
+local shared_fill = "background-color: rgba(7, 20, 36, 185);"
 assert(tab_css:find(shared_fill, 1, true))
-assert(section_css:find(shared_fill, 1, true))
+assert(row_css:find(shared_fill, 1, true))
+assert(angle_css:find(shared_fill, 1, true))
+assert(section_css:find("background-color: transparent;", 1, true))
+assert(row_css:find("padding: 0px 3px 4px;", 1, true))
+-- Confirm four explicitly rendered stair steps form a 16px chamfer.
+for i = 1, 4 do
+    local rule = assert(rml_source:match(
+        "#tab%-angle%-" .. i .. "%s*{([^}]+)}"))
+    assert(rule:find("width: " .. (i * 4) .. "px;", 1, true))
+    assert(rml_source:find('id="tab-angle-' .. i
+        .. '" class="tab-angle-step"', 1, true))
+end
+assert(angle_css:find("height: 6px;", 1, true))
+assert(rml_source:find('id="skynet-tab"', 1, true))
 -- Validate all rgba() declarations to prevent accidental CSS-style alpha
 -- values from returning in future visual changes.
 for channels in rml_source:gmatch("rgba%(([^)]*)%)") do
@@ -366,4 +382,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: RmlUi alpha 0..255, matched opaque tab/columns, transparent frame, full-height guides, flood follow")
+print("PASS: 73%-opaque tab and unified column background, filled gutters, stepped tab, flood follow")
