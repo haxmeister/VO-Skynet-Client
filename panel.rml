@@ -15,9 +15,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    /* Normal flight: a restrained tint, no visible window outline.
-       /skynetui layout restores a stronger frame via ui.lua. */
-    background-color: rgba(7, 20, 36, 0.72);
+    /* Let the three content columns and the SKYNET tab carry the tint.
+       The outer shell stays clear instead of forming a broad dark window. */
+    background-color: transparent;
     border-width: 0px;
     border-color: transparent;
     border-radius: 5px;
@@ -32,15 +32,26 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     height: 25px;
     min-height: 25px;
     justify-content: space-between;
-    align-items: center;
-    padding: 2px 9px;
+    align-items: flex-end;
+    padding: 0px 3px;
     color: #75b9e8;
     font-size: 12px;
     letter-spacing: 1px;
     border-bottom-width: 0px;
     drag: drag;
 }
-#skynet-identity { display: flex; flex-direction: row; align-items: center; }
+/* This is a short tab, not a full-width title bar. Match the exact color
+   of .section and align its lower edge with the content below. */
+#skynet-identity {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 3px 9px;
+    background-color: rgba(7, 20, 36, 0.92);
+    border-radius: 5px 5px 0px 0px;
+}
 #skynet-title {
     font-weight: bold;
     color: #f5a44b;
@@ -78,6 +89,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     min-width: 0;
     min-height: 0;
     padding: 3px 5px;
+    /* Deliberately more opaque than the old 0.72 outer-panel tint.
+       All three columns use the same paint as the SKYNET status tab. */
+    background-color: rgba(7, 20, 36, 0.92);
 }
 .scroller {
     display: block;
