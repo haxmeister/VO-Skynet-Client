@@ -87,6 +87,7 @@ function UI.new(options)
     self.chat_scroll_user_input = false
     self.chat_scroll_mouse_down = false
     self.chat_scroll_trace = false
+    self.chat_opacity_values = {}
     self.chat_scroll_timer = options.chat_scroll_timer
     self.load_geometry = options.load_geometry
     self.save_geometry = options.save_geometry
@@ -136,6 +137,8 @@ end
 -- keep RmlUi's flex children from letting chat overflow the panel bottom.
 local HEADER_HEIGHT = 25
 local COLUMN_BACKDROP_FADE_HEIGHT = 37
+-- Match the column backdrop's transition, but affect chat text only.
+local CHAT_TEXT_FADE_HEIGHT = 37
 local COLUMN_PADDING = 4
 local SECTION_PADDING = 6
 local INPUT_HEIGHT = 29
@@ -542,7 +545,7 @@ function UI:unmount()
     end
     self.chat_follow_bottom = true
     self.chat_scroll_bound = false
-    self.chat_fade_applied = nil
+    self.chat_opacity_values = {}
     self.sighting_fade_active = false
     if self.sighting_fade_timer then
         pcall(function() self.sighting_fade_timer:Kill() end)
@@ -962,31 +965,48 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
--- Fade old chat text by masking the scrollable element's own pixels.
--- The previous navy-gradient overlay painted a hard-edged rectangle when
--- the column background became transparent at its top. An RCSS mask
--- does not paint any background. It is harmless if VO lacks mask support.
--- Only enable it while scrolled away from the beginning of history.
+-- VO does not render RmlUi mask-image. The old navy overlay obscured
+-- the fading column backdrop, so adjust individual chat rows instead.
+-- Row opacity is natively supported (as with our sighting fade).
+-- Each row is positioned relative to #chat-list; offset_top describes its
+-- position BEFORE scrolling. Blend across 37px, without any painted layer.
+-- RmlUi does not expose per-glyph positioning in Lua, so the fade applies
+-- to an entire chat message (including wrapped lines), not each pixel.
 function UI:update_chat_fade()
     local list = self:node("chat-list")
     if not list then return end
-    local top = tonumber(list.scroll_top) or 0
-    local client = tonumber(list.client_height) or 0
+    local scroll = tonumber(list.scroll_top) or 0
+    local visible = tonumber(list.client_height) or 0
     local extent = tonumber(list.scroll_height) or 0
-    local active = top > 0.5 and extent > client + 1
-    if self.chat_fade_applied == active then return end
-    local ok = pcall(function()
-        list:SetClass("chat-faded", active)
-    end)
-    if not ok then
-        -- Keep the existing scroller class for older VO bindings without
-        -- SetClass; otherwise overflow and scrollbar behavior could change.
-        ok = pcall(function()
-            list:SetAttribute("class",
-                active and "scroller chat-faded" or "scroller")
-        end)
+    local fading = scroll > 0.5 and extent > visible + 1
+
+    for i = 1, #self.chat do
+        local row = self:node("chat-row-" .. i)
+        if row then
+            local opacity = "1"
+            if fading then
+                -- A small sample distance keeps wrapped messages more
+                -- readable while their upper lines exit the viewport.
+                local ok, top, height = pcall(function()
+                    return tonumber(row.offset_top),
+                        tonumber(row.offset_height)
+                end)
+                if ok and top and height then
+                    local sample = top - scroll
+                        + math.min(height * 0.5, 18)
+                    local progress = math.max(0, math.min(1,
+                        sample / CHAT_TEXT_FADE_HEIGHT))
+                    -- Smoothstep: no abrupt change when entering the band.
+                    local eased = progress * progress * (3 - 2 * progress)
+                    opacity = string.format("%.3f", eased)
+                end
+            end
+            if self.chat_opacity_values[i] ~= opacity then
+                local ok = pcall(function() row.style.opacity = opacity end)
+                if ok then self.chat_opacity_values[i] = opacity end
+            end
+        end
     end
-    if ok then self.chat_fade_applied = active end
 end
 
 -- RmlUi may report the previous scroll range immediately after inner_rml.
@@ -1134,8 +1154,8 @@ function UI:render_chat()
     local node = self:node("chat-list")
     if not node then return end
     local output = {}
-    for _, entry in ipairs(self.chat) do
-        output[#output + 1] = '<div class="chat-row">'
+    for i, entry in ipairs(self.chat) do
+        output[#output + 1] = '<div id="chat-row-' .. i .. '" class="chat-row">'
             .. label(entry.name .. ":", self:color_of(self.player_alliances[entry.name]), "pilot")
             .. ' ' .. escape(entry.message) .. '</div>'
     end
@@ -1145,6 +1165,8 @@ function UI:render_chat()
         self:schedule_chat_follow()
     end
     node.inner_rml = table.concat(output)
+    -- DOM replacement invalidates row nodes and cached opacity values.
+    self.chat_opacity_values = {}
     self:update_chat_fade()
 end
 
