@@ -79,7 +79,7 @@ assert(ui.geometry.height == 166)
 assert(ui.geometry.online == 180)
 assert(ui.geometry.sightings == 160)
 assert(ui.geometry.chat == 280)
-assert(nodes["chat-list"].style.height == "113px")
+assert(nodes["chat-list"].style.height == "111px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
 assert(ui:set_layout_editing(true))
