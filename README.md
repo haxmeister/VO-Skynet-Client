@@ -10,7 +10,7 @@ Work is on `feature/rmlui-hud-active-test`; **do not merge into main without a s
 - Online roster with alliance colors, a **bounded scrollable chat history**, and sightings with age/expiry.
 - **Movable/resizable panel** with draggable column separators and saved layout preferences.
 - **Low-chrome flight HUD:** the SKYNET title and live connection status remain visible without a title-bar border; the outer window outline is hidden in flight. Column dividers stay muted and brighten in layout mode.
-- **Classic orange and blue:** the ONLINE, ALLIANCE CHAT, and SIGHTINGS headings are orange and underlined; the SKYNET title and window accents retain their blue color.
+- **Classic orange and blue:** the SKYNET title is orange, while ONLINE, ALLIANCE CHAT, and SIGHTINGS headings are blue and underlined. The colored vertical dividers begin below the section headings, not alongside them.
 - **Scrollbars hidden in flight:** chat history still scrolls and follows new messages, but the scrollbar is transparent until layout-edit mode.
 - **Modest background tint:** normal flight uses a slightly softer translucent panel (0.72 versus 0.82 in layout mode). The chat input remains dark for readability.
 - The text-entry row remains fully visible below the chat scrollbar.
@@ -57,7 +57,7 @@ The panel starts at its original radar-safe position. To interact with its frame
 /skynetui layout
 ```
 
-In normal flight, the SKYNET title and CONNECTED/DISCONNECTED status remain visible in a borderless blue title row; the outer window outline is hidden. The two vertical column separators remain as **one-pixel, muted steel-blue guides**. These are real 1px elements (not alpha-blended borders), because the transparent-border approach was invisible in VO. The surrounding 8px gutters still provide the same draggable hit areas. The full panel height belongs to the three content columns, including the chat history and reserved text-entry row. The splitter hit areas remain 8px wide so the saved column geometry does not change.
+In normal flight, the SKYNET title and CONNECTED/DISCONNECTED status remain visible in a borderless blue title row; the outer window outline is hidden. The two vertical column separators remain as **one-pixel, muted steel-blue guides** that start just below the three underlined column headings. These are real 1px elements (not alpha-blended borders), because the transparent-border approach was invisible in VO. The surrounding 8px gutters still provide the same draggable hit areas. The full panel height belongs to the three content columns, including the chat history and reserved text-entry row. The splitter hit areas remain 8px wide so the saved column geometry does not change.
 
 The chat scrollbar is **visually transparent outside layout mode**; RmlUi still creates it with its original 11px width, and the chat retains overflow scrolling and automatic follow-to-bottom. In layout-edit mode, the scrollbar track and thumb regain their colors, making it easy to inspect or scroll the history while adjusting the panel. A `layout-edit` class on the panel controls scrollbar styling without changing the scroll mechanics.
 
@@ -69,7 +69,7 @@ While editing, the **outer border**, brighter single-line dividers, corner resiz
 - **Click DONE** to restore the native HUD's input and flight controls.
 - **`/skynetui resetlayout`** restores the original position and sizes.
 
-**Styling test:** Compare normal flight with `/skynetui layout`. The SKYNET title and actual connection status should stay visible with no bottom border on the title row, and all three column headings should be orange and underlined. The outer border should appear only in edit mode; the two thin blue-grey dividers should brighten, and the scrollbar should switch from invisible to styled. The title row occupies 25px in both modes, while the visible outer border in edit mode uses an additional 2px. Verify that `/skynetui demo flood` still follows the latest message and Shift+A keeps the input field visible. No compact/expanded mode or HUD-hiding behavior was added.
+**Styling test:** Compare normal flight with `/skynetui layout`. The SKYNET title should be orange, the live connection status should remain visible with no border beneath the title row, and all three column headings should be blue and underlined, placed above the start of the vertical divider lines. The outer border should appear only in edit mode; the two thin blue-grey dividers should brighten, and the scrollbar should switch from invisible to styled. The title row occupies 25px in both modes, while the visible outer border in edit mode uses an additional 2px. Verify that `/skynetui demo flood` still follows the latest message and Shift+A keeps the input field visible. No compact/expanded mode or HUD-hiding behavior was added.
 
 Panel dimensions and divider widths are constrained to remain on-screen when possible. The plugin attempts to store the six layout values in VO's `Game.SetPrefString("skynetui.layout.v1", ...)` preference and to reload them when the interface restarts. The layout remains editable for the current session if the VO build does not persist custom preference keys.
 
