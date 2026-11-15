@@ -60,6 +60,11 @@ function UI.new(options)
         or (gkmisc and gkmisc.GetGameTime)
     self.sighting_fade_timer = options.sighting_fade_timer
     self.sighting_fade_active = false
+    -- The sightings feed follows its TOP, opposite chat's bottom follow.
+    -- A single delayed retry accounts for VO's deferred RmlUi relayout.
+    self.sighting_top_timer = options.sighting_top_timer
+    self.sighting_top_pending = false
+    self.sighting_sequence = 0
     self.sighting_rendered = {}
     self.sighting_opacity_values = {}
     self.sighting_clock_anchor_ms = nil
@@ -537,6 +542,10 @@ function UI:unmount()
     if self.sighting_fade_timer then
         pcall(function() self.sighting_fade_timer:Kill() end)
     end
+    self.sighting_top_pending = false
+    if self.sighting_top_timer then
+        pcall(function() self.sighting_top_timer:Kill() end)
+    end
     self.sighting_rendered = {}
     self.sighting_opacity_values = {}
     self.layout_chrome_applied = nil
@@ -559,6 +568,10 @@ function UI:hide()
     self.sighting_fade_active = false
     if self.sighting_fade_timer then
         pcall(function() self.sighting_fade_timer:Kill() end)
+    end
+    self.sighting_top_pending = false
+    if self.sighting_top_timer then
+        pcall(function() self.sighting_top_timer:Kill() end)
     end
     if self.document then self.document:Hide() end
 end
@@ -782,16 +795,45 @@ function UI:follow_chat(trace)
     self:schedule_chat_follow()
 end
 
+-- New sightings appear first, and the viewport follows the top.
+-- Equal-second events use arrival order rather than alphabetical order.
 function UI:add_sighting(name, ship_type, sector, seen_at)
     if type(name) ~= "string" or name == "" then return end
     local when = tonumber(seen_at) or self.clock()
     local old = self.sightings[name]
     if old and when < old.seen_at then return end
+    self.sighting_sequence = self.sighting_sequence + 1
     self.sightings[name] = {
         name = name, ship_type = tostring(ship_type or "?"),
         sector = tostring(sector or "?"), seen_at = when,
+        sequence = self.sighting_sequence,
     }
     self:render_sightings()
+    self:follow_sightings_top()
+end
+
+-- Scroll to zero on new arrivals, never on age updates or expirations.
+-- Unlike chat, this does not depend on the new content height. A single
+-- 40ms correction handles any deferred VO layout that restores old scroll.
+function UI:follow_sightings_top()
+    local list = self:node("sightings-list")
+    if not list then return end
+    list.scroll_top = 0
+    if self.sighting_top_pending or not self.visible then return end
+    if not self.sighting_top_timer then
+        local ok, timer = pcall(function() return Timer() end)
+        if not ok or not timer then return end
+        self.sighting_top_timer = timer
+    end
+    self.sighting_top_pending = true
+    local ok = pcall(function()
+        self.sighting_top_timer:SetTimeout(40, function()
+            self.sighting_top_pending = false
+            local current = self:node("sightings-list")
+            if current and self.visible then current.scroll_top = 0 end
+        end)
+    end)
+    if not ok then self.sighting_top_pending = false end
 end
 
 -- Produce an epoch-like clock with fractional seconds without requiring
@@ -1118,7 +1160,7 @@ function UI:render_sightings()
     end
     table.sort(items, function(a,b)
         if a.seen_at ~= b.seen_at then return a.seen_at > b.seen_at end
-        return a.name < b.name
+        return (a.sequence or 0) > (b.sequence or 0)
     end)
     local output = {}
     local precise_now = self:sighting_now()
