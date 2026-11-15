@@ -1,5 +1,6 @@
 -- VO plugin entry point. Demonstration data only; Skynet networking comes later.
 local UI = dofile("ui.lua")
+local NativeChat = dofile("native_chat.lua") -- opt-in HUD reparent experiment
 -- RmlUi resolves relative paths in the plugin's initialization scope.
 -- Load the RML from the entry point, not from a secondary dofile() module.
 -- Start hidden. VO loads plugins even on the login screen.
@@ -103,6 +104,8 @@ local function sync_visibility()
     if user_wants_visible and ship_hud_visible and is_flying() then
         ui:show()
     else
+        -- Never keep a reparented VO chat control after leaving the ship HUD.
+        NativeChat.restore(ui)
         ui:hide()
     end
 end
@@ -146,6 +149,7 @@ local ticker = Timer()
 local function refresh()
     ui:tick()
     sync_visibility()
+    NativeChat.realign(ui) -- keeps the overlay aligned after viewport changes
     ticker:SetTimeout(1000, refresh)
 end
 ticker:SetTimeout(1000, refresh)
@@ -157,7 +161,7 @@ local function activate_chat()
     open_chat_prompt()
 end
 
--- /skynetui hide|show|demo|chat
+-- /skynetui hide|show|demo|chat|native probe|dock|restore
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -168,6 +172,19 @@ RegisterUserCommand("skynetui", function(_, args)
         ui:add_sighting("Drake", "Vult", "Odia M-14")
     elseif command == "chat" then
         activate_chat()
+        return
+    elseif command == "native" then
+        local action = args and args[2] or "probe"
+        if action == "probe" then
+            NativeChat.probe(ui)
+        elseif action == "dock" then
+            sync_visibility()
+            NativeChat.dock(ui)
+        elseif action == "restore" then
+            NativeChat.restore(ui)
+        else
+            print("Skynet UI: /skynetui native probe|dock|restore")
+        end
         return
     else
         user_wants_visible = true
@@ -188,4 +205,4 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
     end
 end
 
-print("Skynet UI prototype loaded; A opens chat (native VO prompt)")
+print("Skynet UI prototype loaded; A opens chat; /skynetui native probe|dock|restore")
