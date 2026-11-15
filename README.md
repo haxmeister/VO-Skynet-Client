@@ -32,7 +32,8 @@ Place these repository files in `plugins/skynetui/`, so the plugin entry point i
 4. Press **Escape** during another message. Flight controls should return.
 5. Enter `/skynetui layout`; mouse-drag the SKYNET title, two slim column dividers, and the bottom-right grip. Click **DONE** when finished.
 6. Use `/skynetui demo flood` to insert 40 long test messages **and six sightings aged 0%, 70%, 85%, 90%, 95%, and 98% through their TTL**, including three in the final fading window. The sightings should show progressively fainter rows and expire naturally. Chat must stay within the panel and scroll to the latest message. The scrollbar should be invisible during normal flight and reappear in `/skynetui layout`. While chatting, the input row must stay visible beneath the history.
-7. Test docking/undocking, hiding the panel, and `ReloadInterface()` while the chat field is open.
+7. To test the other two scrollers, run `/skynetui demo scroll` to generate **32 online pilots and 24 fresh sightings**, enough to overflow both. Enter `/skynetui layout` to enable mouse input and show scrollbar thumbs. Move the wheel over **Online**, then **Sightings**: each list must scroll independently without moving the others or the HUD. Run `/skynetui demo scrollcheck` to print their `scroll_top`, viewport height and content height. Check that the scroll position increases after using the wheel and can return to zero at the top. Demo sightings expire normally after the configured TTL (60 seconds by default), so repeat `/skynetui demo scroll` to refresh the test.
+8. Test docking/undocking, hiding the panel, and `ReloadInterface()` while the chat field is open.
 
 Console commands:
 
@@ -42,6 +43,8 @@ Console commands:
 /skynetui show
 /skynetui demo
 /skynetui demo flood
+/skynetui demo scroll
+/skynetui demo scrollcheck
 /skynetui layout
 /skynetui resetlayout
 /skynetui input rml
@@ -65,7 +68,7 @@ In normal flight, the orange **SKYNET:** label sits immediately before the live 
 
 **Sighting expiration fade:** Each sighting row uses RmlUi's inherited `opacity` property (0–1, unlike RGBA alpha), based on its elapsed age divided by its configured TTL. Opacity stays at 1.00 through 85% of the TTL, then declines linearly toward 0.12 over the remaining 15% and applies to the pilot, ship, sector, and age label. During the fade window, a dedicated VO `Timer` updates existing RmlUi row elements about every 40 milliseconds (25 FPS), using `gkmisc.GetGameTime()` for millisecond precision. The original one-second `tick()` updates only the age labels and handles expiry; it no longer reconstructs each row on every tick, which had caused the visible stuttering. The high-rate timer stays mostly idle before fade starts and is stopped when the panel is hidden or unloaded. Expired rows are removed on schedule. `/skynetui demo flood` generates six sightings with three near expiry so the fade is easy to compare in-game.
 
-The chat scrollbar is **visually transparent outside layout mode**; RmlUi still creates it with its original 11px width, and the chat retains overflow scrolling and automatic follow-to-bottom. In layout-edit mode, the scrollbar track and thumb regain their colors, making it easy to inspect or scroll the history while adjusting the panel. A `layout-edit` class on the panel controls scrollbar styling without changing the scroll mechanics.
+All three content lists are independent RmlUi scroll containers. **Online** and **Sightings** use `overflow-y: auto` and an explicitly sized viewport; chat uses `overflow-y: scroll` and automatic follow-to-bottom. Their scrollbar paint is **visually transparent outside layout mode**; RmlUi still creates bars when needed. In layout-edit mode, the tracks and thumbs regain their colors, making it possible to inspect each overflow area without changing scroll mechanics. A `layout-edit` class on the panel controls the scrollbar styling. The `demo scrollcheck` command reports `scroll_top`, viewport height and content height from the actual RmlUi elements to diagnose missing overflow or wheel input.
 
 While editing, the **outer border**, brighter single-line dividers, corner resize grip, and DONE control reappear. The SKYNET title and connection status remain present in both modes, with **no line under the title row**. The native HUD **remains visible** but its IUP input is temporarily disabled so RmlUi can receive mouse drag events. The cursor is shown, and the flight-control input mode is temporarily disabled.
 
