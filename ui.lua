@@ -219,9 +219,26 @@ function UI:layout()
     panel.style.width = px(g.width)
     panel.style.height = px(g.height)
 
+    -- Window chrome is shown only during /skynetui layout. Keep the HUD
+    -- background restrained in flight: the VO client already appears very
+    -- transparent, so don't reduce contrast further than necessary.
+    -- RmlUi's style proxy uses RCSS property names for hyphenated keys.
+    local editing = self.layout_editing
+    local header = self:node("skynet-header")
+    if header then header.style.display = editing and "flex" or "none" end
+    panel.style["background-color"] = editing
+        and "rgba(7, 20, 36, 0.82)" or "rgba(7, 20, 36, 0.72)"
+    panel.style["border-width"] = editing and "1px" or "0px"
+    panel.style["border-color"] = editing and "#3f7799" or "transparent"
+
+    -- A hidden header must not leave a 25px blank strip in normal flight.
+    -- The geometry still describes the same outer window rectangle.
+    local header_height = editing and HEADER_HEIGHT or 0
+    local border_allowance = editing and 2 or 0
+
     -- Give both the column row and each list its own *definite* height.
     -- The chat form occupies a fixed row only while input is open.
-    local columns_height = math.max(1, g.height - HEADER_HEIGHT - 2)
+    local columns_height = math.max(1, g.height - header_height - border_allowance)
     local section_height = math.max(1, columns_height - COLUMN_PADDING)
     local common_list_height = math.max(1,
         section_height - SECTION_PADDING - HEADING_HEIGHT)
@@ -247,7 +264,14 @@ function UI:layout()
     end
     for _, id in ipairs({"split-left", "split-right"}) do
         local node = self:node(id)
-        if node then node.style.height = px(section_height) end
+        if node then
+            node.style.height = px(section_height)
+            -- Preserve the divider's 8px hit target without drawing a line
+            -- until the user explicitly enters layout-edit mode.
+            node.style["border-left-width"] = editing and "1px" or "0px"
+            node.style["background-color"] = editing
+                and "rgba(23, 62, 83, 0.25)" or "transparent"
+        end
     end
 
     for _, id in ipairs({"online-list", "sightings-list"}) do
