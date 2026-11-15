@@ -135,6 +135,7 @@ end
 -- Geometry is in actual context pixels, not percentages. Explicit heights
 -- keep RmlUi's flex children from letting chat overflow the panel bottom.
 local HEADER_HEIGHT = 25
+local COLUMN_BACKDROP_FADE_HEIGHT = 37
 local COLUMN_PADDING = 4
 local SECTION_PADDING = 6
 local INPUT_HEIGHT = 29
@@ -291,6 +292,14 @@ function UI:layout()
 
     local row = self:node("skynet-columns")
     if row then row.style.height = px(columns_height) end
+    -- Fill only BELOW the initial 37px transparent-to-navy gradient.
+    -- Keep this in step with column resizing and the saved panel height.
+    -- The row's own background stays transparent so its top has no edge.
+    local solid = self:node("columns-solid-fill")
+    if solid then
+        solid.style.height = px(math.max(1,
+            columns_height - COLUMN_BACKDROP_FADE_HEIGHT))
+    end
     local online = self:node("online-panel")
     if online then
         online.style.width = px(g.online)
