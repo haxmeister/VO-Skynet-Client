@@ -53,6 +53,17 @@ function UI.new(options)
         self.settings[key] = options[key] == nil and value or options[key]
     end
     self.clock = options.clock or os.time
+    -- gkmisc.GetGameTime() supplies millisecond precision in VO. The
+    -- regular os.time() clock is still used for expiry and age labels.
+    -- Optional injection makes the smooth clock deterministic in tests.
+    self.sighting_time_ms = options.sighting_time_ms
+        or (gkmisc and gkmisc.GetGameTime)
+    self.sighting_fade_timer = options.sighting_fade_timer
+    self.sighting_fade_active = false
+    self.sighting_rendered = {}
+    self.sighting_opacity_values = {}
+    self.sighting_clock_anchor_ms = nil
+    self.sighting_clock_anchor_wall = nil
     self.context = options.context
     self.document = nil
     self.visible = options.visible ~= false
@@ -528,6 +539,12 @@ function UI:unmount()
     end
     self.chat_follow_bottom = true
     self.chat_scroll_bound = false
+    self.sighting_fade_active = false
+    if self.sighting_fade_timer then
+        pcall(function() self.sighting_fade_timer:Kill() end)
+    end
+    self.sighting_rendered = {}
+    self.sighting_opacity_values = {}
     self.layout_chrome_applied = nil
     self.layout_controls_bound = false
 end
@@ -537,6 +554,7 @@ function UI:show()
     self.visible = true
     if self.document then self.document:Show() end
     if self.chat_follow_bottom then self:schedule_chat_follow() end
+    self:schedule_sighting_fade()
 end
 
 function UI:hide()
@@ -544,6 +562,10 @@ function UI:hide()
     if self.layout_editing then self:set_layout_editing(false) end
     if not self.visible then return end
     self.visible = false
+    self.sighting_fade_active = false
+    if self.sighting_fade_timer then
+        pcall(function() self.sighting_fade_timer:Kill() end)
+    end
     if self.document then self.document:Hide() end
 end
 
@@ -778,6 +800,109 @@ function UI:add_sighting(name, ship_type, sector, seen_at)
     self:render_sightings()
 end
 
+-- Produce an epoch-like clock with fractional seconds without requiring
+-- os.time() to have subsecond precision. VO's GetGameTime is a millisecond
+-- counter, not an epoch timestamp; anchor it once to os.time(). Re-anchor
+-- if the counter resets on a server restart, or becomes unavailable.
+function UI:sighting_now()
+    local wall = self.clock()
+    local source = self.sighting_time_ms
+    if type(source) ~= "function" then return wall end
+    local ok, value = pcall(source)
+    local ms = ok and tonumber(value) or nil
+    if not ms then return wall end
+    if not self.sighting_clock_anchor_ms
+        or ms < self.sighting_clock_anchor_ms
+        or ms - self.sighting_clock_anchor_ms > 86400000 then
+        self.sighting_clock_anchor_ms = ms
+        self.sighting_clock_anchor_wall = wall
+    end
+    return self.sighting_clock_anchor_wall
+        + (ms - self.sighting_clock_anchor_ms) / 1000
+end
+
+function UI:sighting_opacity(elapsed, ttl)
+    -- No fade until 85%; then smoothly interpolate to 12% at expiry.
+    local fade_start = ttl * 0.85
+    local progress = math.max(0, math.min(1,
+        (elapsed - fade_start) / (ttl - fade_start)))
+    return 1 - 0.88 * progress
+end
+
+-- Modify the EXISTING RmlUi row's style, never rebuild its DOM on a
+-- fade frame. This preserves the element while it changes opacity.
+function UI:update_sighting_opacity()
+    if not self.document then return end
+    local now = self:sighting_now()
+    local ttl = math.max(1, tonumber(self.settings.sighting_ttl) or 60)
+    for index, item in ipairs(self.sighting_rendered) do
+        local value = string.format("%.4f",
+            self:sighting_opacity(math.max(0, now - item.seen_at), ttl))
+        if self.sighting_opacity_values[index] ~= value then
+            local row = self:node("sighting-row-" .. index)
+            if row then
+                row.style.opacity = value
+                self.sighting_opacity_values[index] = value
+            end
+        end
+    end
+end
+
+-- Age labels change once a second, independently of the fade frames.
+function UI:update_sighting_ages(now)
+    for index, item in ipairs(self.sighting_rendered) do
+        local age = tostring(math.max(0,
+            math.floor(now - item.seen_at))) .. "s"
+        local node = self:node("sighting-age-" .. index)
+        if node and node.inner_rml ~= age then node.inner_rml = age end
+    end
+end
+
+function UI:sighting_fade_delay()
+    -- Avoid a high-rate timer until one of the sightings is in its
+    -- final 15%. While fading, about 25 updates per second is smooth.
+    local now = self:sighting_now()
+    local ttl = math.max(1, tonumber(self.settings.sighting_ttl) or 60)
+    local nearest
+    for _, item in pairs(self.sightings) do
+        local seconds = item.seen_at + 0.85 * ttl - now
+        if seconds <= 0 then return 40 end
+        if not nearest or seconds < nearest then nearest = seconds end
+    end
+    if not nearest then return 1000 end
+    return math.max(40, math.min(1000, math.floor(nearest * 1000)))
+end
+
+function UI:schedule_sighting_fade()
+    if self.sighting_fade_active or not self.document or not self.visible
+        or not next(self.sightings) then return end
+    if not self.sighting_fade_timer then
+        -- VO's Timer is sometimes a callable table, not a function.
+        local ok, timer = pcall(function() return Timer() end)
+        if not ok or not timer then return end
+        self.sighting_fade_timer = timer
+    end
+    self.sighting_fade_active = true
+    local function pulse()
+        if not self.sighting_fade_active or not self.document
+            or not self.visible or not next(self.sightings) then
+            self.sighting_fade_active = false
+            return
+        end
+        self:update_sighting_opacity()
+        local ok = pcall(function()
+            self.sighting_fade_timer:SetTimeout(
+                self:sighting_fade_delay(), pulse)
+        end)
+        if not ok then self.sighting_fade_active = false end
+    end
+    local ok = pcall(function()
+        self.sighting_fade_timer:SetTimeout(
+            self:sighting_fade_delay(), pulse)
+    end)
+    if not ok then self.sighting_fade_active = false end
+end
+
 function UI:tick()
     self:layout() -- Adjust if the game's viewport resolution changes.
     local now = self.clock()
@@ -788,8 +913,15 @@ function UI:tick()
             dirty = true
         end
     end
-    -- The age labels change even when no sightings expire.
-    if dirty or self.document then self:render_sightings() end
+    if dirty then
+        self:render_sightings()
+    else
+        -- Rebuilding inner_rml every second destroys in-progress fades.
+        -- Update the age labels and live opacity on existing nodes instead.
+        self:update_sighting_ages(now)
+        self:update_sighting_opacity()
+        self:schedule_sighting_fade()
+    end
 end
 
 function UI:node(id)
@@ -1015,25 +1147,27 @@ function UI:render_sightings()
         return a.name < b.name
     end)
     local output = {}
-    for _, s in ipairs(items) do
-        local elapsed = math.max(0, now - s.seen_at)
-        local age = math.floor(elapsed)
-        -- Keep sightings fully readable for the first 85% of their TTL.
-        -- Only during the final 15% fade the entire row down toward 12%.
-        -- RmlUi opacity is 0..1, unlike the 0..255 rgba alpha channel.
-        local fade_start = ttl * 0.85
-        local fade_progress = math.max(0, math.min(1,
-            (elapsed - fade_start) / (ttl - fade_start)))
-        local opacity = 1 - 0.88 * fade_progress
-        output[#output + 1] = '<div class="sighting-row" style="opacity: '
-            .. string.format("%.2f", opacity) .. ';">'
-            .. label(s.name, self:color_of(self.player_alliances[s.name]), "sighting-pilot")
-            .. '<span class="sighting-ship">' .. escape(s.ship_type) .. '</span>'
-            .. label(s.sector, self:color_of(self.sector_owners[s.sector]), "sighting-sector")
-            .. '<span class="sighting-age">' .. age .. 's</span></div>'
+    local precise_now = self:sighting_now()
+    self.sighting_rendered = items
+    self.sighting_opacity_values = {}
+    for index, item in ipairs(items) do
+        local elapsed = math.max(0, precise_now - item.seen_at)
+        local age = math.max(0, math.floor(now - item.seen_at))
+        local opacity = string.format("%.4f", self:sighting_opacity(
+            elapsed, ttl))
+        self.sighting_opacity_values[index] = opacity
+        output[#output + 1] = '<div id="sighting-row-' .. index
+            .. '" class="sighting-row" style="opacity: '
+            .. opacity .. ';">'
+            .. label(item.name, self:color_of(self.player_alliances[item.name]), "sighting-pilot")
+            .. '<span class="sighting-ship">' .. escape(item.ship_type) .. '</span>'
+            .. label(item.sector, self:color_of(self.sector_owners[item.sector]), "sighting-sector")
+            .. '<span id="sighting-age-' .. index
+            .. '" class="sighting-age">' .. age .. 's</span></div>'
     end
     local node = self:node("sightings-list")
     if node then node.inner_rml = table.concat(output) end
+    self:schedule_sighting_fade()
 end
 
 function UI:render()
