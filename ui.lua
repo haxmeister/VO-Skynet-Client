@@ -172,10 +172,19 @@ end
 
 -- The RML form handles Enter; keydown handles Escape and is also an Enter
 -- fallback. Close before invoking a callback to prevent duplicate sends.
+-- Explicit form controls and key listeners. RmlUi in VO can receive text
+-- while some keyboard identifiers / native default submit behavior are absent.
+-- Send and Cancel buttons give us a mouse-operated fallback for diagnosis.
 function UI:bind_chat_input()
     if self.chat_listeners_bound then return true end
-    local form, input = self:node("chat-form"), self:node("chat-input")
-    if not form or not input then return false end
+    local form = self:node("chat-form")
+    local input = self:node("chat-input")
+    local send = self:node("chat-send")
+    local cancel = self:node("chat-cancel")
+    if not form or not input or not send or not cancel then
+        print("Skynet UI: RmlUi chat form or button is missing")
+        return false
+    end
 
     local key_ids = rmlui and rmlui.key_identifier
     local esc = (key_ids and key_ids.KI_ESCAPE) or 81
@@ -185,13 +194,13 @@ function UI:bind_chat_input()
     local function trace(kind, extra)
         if not self.chat_diagnostics or not self.chat_input_open then return end
         self.chat_diagnostic_events = self.chat_diagnostic_events + 1
-        if self.chat_diagnostic_events <= 30 then
+        if self.chat_diagnostic_events <= 35 then
             print("Skynet RmlUi input: event=" .. kind
-                .. (extra and (" value=" .. tostring(extra)) or ""))
+                .. (extra ~= nil and (" value=" .. tostring(extra)) or ""))
         end
     end
 
-    -- Diagnostic listeners are optional, never required for chat to open.
+    -- These do not log user text; only event names and key identifiers.
     for _, kind in ipairs({"focus", "blur", "click", "textinput", "change"}) do
         local diagnostic_kind = kind
         local ok_diagnostic, err = pcall(function()
@@ -205,30 +214,64 @@ function UI:bind_chat_input()
         end
     end
 
+    local function stop(event)
+        if event then
+            pcall(function() event:StopPropagation() end)
+        end
+    end
+
+    local function on_key(event, phase)
+        if not self.chat_input_open then return end
+        local p = event and event.parameters
+        local key = p and p.key_identifier
+        trace(phase, key or "nil")
+        if key == esc then
+            stop(event)
+            print("Skynet UI: RmlUi Escape received (" .. phase .. ")")
+            self:cancel_chat("escape-" .. phase)
+        elseif key == enter or key == num_enter then
+            stop(event)
+            print("Skynet UI: RmlUi Enter received (" .. phase .. ")")
+            self:submit_chat("enter-" .. phase)
+        end
+    end
+
     local ok_form, form_err = pcall(function()
         form:AddEventListener("submit", function(event)
-            self:submit_chat()
-            if event then event:StopPropagation() end
+            trace("form-submit")
+            stop(event)
+            self:submit_chat("form-submit")
         end, false)
     end)
+
     local ok_key, key_err = pcall(function()
         input:AddEventListener("keydown", function(event)
-            if not self.chat_input_open then return end
-            local key = event.parameters and event.parameters.key_identifier
-            trace("keydown", key)
-            if key == esc then
-                event:StopPropagation()
-                self:cancel_chat()
-            elseif key == enter or key == num_enter then
-                event:StopPropagation()
-                self:submit_chat()
-            end
+            on_key(event, "keydown")
+        end, false)
+        -- Keyup is a fallback for clients that lose the keydown identifier.
+        input:AddEventListener("keyup", function(event)
+            on_key(event, "keyup")
         end, false)
     end)
-    self.chat_listeners_bound = ok_form and ok_key
+
+    local ok_buttons, button_err = pcall(function()
+        send:AddEventListener("click", function(event)
+            trace("send-click")
+            stop(event)
+            self:submit_chat("send-button")
+        end, false)
+        cancel:AddEventListener("click", function(event)
+            trace("cancel-click")
+            stop(event)
+            self:cancel_chat("cancel-button")
+        end, false)
+    end)
+
+    self.chat_listeners_bound = ok_form and ok_key and ok_buttons
     if not self.chat_listeners_bound then
-        print("Skynet UI: chat input listeners unavailable: "
-            .. tostring(form_err or key_err))
+        print("Skynet UI: chat listeners failed: form="
+            .. tostring(form_err) .. " key=" .. tostring(key_err)
+            .. " buttons=" .. tostring(button_err))
     end
     return self.chat_listeners_bound
 end
@@ -237,49 +280,61 @@ function UI:begin_chat()
     if not self.visible or not self.chat_listeners_bound then return false end
     local form, input = self:node("chat-form"), self:node("chat-input")
     if not form or not input then return false end
-    if self.chat_input_open then return true end
+    if self.chat_input_open then
+        print("Skynet UI: begin_chat called while chat is already open")
+        return true
+    end
     self.chat_input_open = true
     self.chat_diagnostic_events = 0
     form.style.display = "block"
-    input.value = ""
-    -- Switch VO out of flight-input mode before asking RmlUi for focus.
-    -- If the game refuses the handoff, do not leave a nonfunctional entry open.
+    local cleared, clear_err = pcall(function() input.value = "" end)
+    if not cleared then
+        print("Skynet UI: failed to clear chat on open: " .. tostring(clear_err))
+    end
     if not self:notify_chat_focus(true) then
-        self:cancel_chat()
+        self:cancel_chat("failed-handoff")
         return false
     end
-    local focused, err = pcall(function() input:Focus() end)
+    local focused, focus_err = pcall(function() input:Focus() end)
     if not focused then
-        print("Skynet UI: cannot focus RmlUi chat input: " .. tostring(err))
-        self:cancel_chat()
+        print("Skynet UI: cannot focus RmlUi chat input: " .. tostring(focus_err))
+        self:cancel_chat("failed-focus")
         return false
     end
     if self.chat_diagnostics then
-        print("Skynet RmlUi input: Focus() called successfully; "
-            .. "waiting for text, focus, click, or keydown events")
+        local len = type(input.value) == "string" and #input.value or -1
+        print("Skynet RmlUi input: Focus() called; initial text length=" .. len)
     end
     return true
 end
 
-function UI:cancel_chat()
-    if not self.chat_input_open then return end
+function UI:cancel_chat(reason)
+    if not self.chat_input_open then
+        if self.chat_diagnostics then
+            print("Skynet UI: cancel_chat ignored; input already closed ("
+                .. tostring(reason) .. ")")
+        end
+        return
+    end
     self.chat_input_open = false
+    print("Skynet UI: closing RmlUi chat: " .. tostring(reason or "cancel"))
     local form, input = self:node("chat-form"), self:node("chat-input")
     if input then
-        input.value = ""
-        -- A failed blur must never prevent restoring flight controls.
-        local blurred, err = pcall(function() input:Blur() end)
+        local cleared, clear_err = pcall(function() input.value = "" end)
+        if not cleared then
+            print("Skynet UI: failed to clear chat on close: " .. tostring(clear_err))
+        end
+        local blurred, blur_err = pcall(function() input:Blur() end)
         if not blurred then
-            print("Skynet UI: cannot blur chat input: " .. tostring(err))
+            print("Skynet UI: cannot blur chat input: " .. tostring(blur_err))
         end
     end
     if form then form.style.display = "none" end
-    -- The integrator can restore the native flight-input mode.
+    -- Always restore the IUP HUD and flight controls, including after errors.
     self:notify_chat_focus(false)
 end
 
 -- Accept text from either an RmlUi input or VO's native chat prompt.
--- Transport details belong to the callback, never to this HUD component.
 function UI:deliver_chat(message)
     if type(message) ~= "string" then return false end
     message = message:match("^%s*(.-)%s*$")
@@ -294,12 +349,18 @@ function UI:deliver_chat(message)
     return true
 end
 
-function UI:submit_chat()
+function UI:submit_chat(source)
     if not self.chat_input_open then return false end
     local input = self:node("chat-input")
     local message = input and tostring(input.value or "") or ""
-    self:cancel_chat()
-    return self:deliver_chat(message)
+    print("Skynet UI: RmlUi submit via " .. tostring(source or "unknown")
+        .. "; text length=" .. #message)
+    -- Deliver before restoring the IUP HUD, so its show event can't interrupt
+    -- the local RmlUi render. Cancel still runs if delivery fails.
+    local delivered = self:deliver_chat(message)
+    self:cancel_chat("submitted-" .. tostring(source or "unknown"))
+    print("Skynet UI: RmlUi message delivered=" .. tostring(delivered))
+    return delivered
 end
 
 function UI:set_connected(connected)
