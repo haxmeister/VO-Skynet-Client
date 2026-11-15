@@ -572,6 +572,7 @@ top_ui.document = {
     GetElementById = function(_, id)
         if id == "sightings-list" then return top_list end
     end,
+    Hide = function() end,
 }
 top_list.scroll_top = 65
 top_ui:add_sighting("Alpha", "Vult", "B-8", newest_clock)
