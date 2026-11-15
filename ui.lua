@@ -128,6 +128,8 @@ local COLUMN_PADDING = 4
 local SECTION_PADDING = 6
 local INPUT_HEIGHT = 29
 local SPLITTER_WIDTH = 8
+-- Section side padding 5px each and reserved chat scrollbar width 11px.
+local CHAT_FADE_SIDE_AND_SCROLLBAR = 21
 local HORIZONTAL_PADDING = 8 -- border + inner columns padding
 local MIN_CHAT_WIDTH = 160
 local MIN_ONLINE_WIDTH = 95
@@ -320,6 +322,13 @@ function UI:layout()
     end
     local list = self:node("chat-list")
     if list then list.style.height = px(chat_list_height) end
+    local fade = self:node("chat-top-fade")
+    if fade then
+        -- Overlay only the text viewport; don't cover the scrollbar track.
+        fade.style.width = px(math.max(1,
+            g.chat - CHAT_FADE_SIDE_AND_SCROLLBAR))
+        self:update_chat_fade()
+    end
 
     local done = self:node("layout-done")
     if done then
@@ -817,6 +826,23 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
+-- Blend old messages into the background as they exit at the top of chat.
+-- Hide the gradient when scrolled right to the beginning so the oldest
+-- visible message stays readable. Keep all scrolling events on chat-list.
+function UI:update_chat_fade()
+    local fade = self:node("chat-top-fade")
+    local list = self:node("chat-list")
+    if not fade or not list then return end
+    local top = tonumber(list.scroll_top) or 0
+    local client = tonumber(list.client_height) or 0
+    local extent = tonumber(list.scroll_height) or 0
+    local display = (top > 0.5 and extent > client + 1)
+        and "block" or "none"
+    if fade.style.display ~= display then
+        fade.style.display = display
+    end
+end
+
 -- RmlUi may report the previous scroll range immediately after inner_rml.
 -- Use the measured scrollable bottom, and repeat after later layout frames.
 -- Unlike ScrollIntoView(false), this never moves backwards to the location
@@ -844,6 +870,7 @@ function UI:scroll_chat_to_bottom(pass)
         node.scroll_top = target
     end)
     self.chat_scroll_applying = false
+    self:update_chat_fade()
 
     if self.chat_scroll_trace then
         print("Skynet UI: chat follow pass=" .. tostring(pass)
@@ -936,6 +963,7 @@ function UI:bind_chat_scroll()
             self.chat_scroll_mouse_down = false
         end, false)
         node:AddEventListener("scroll", function()
+            self:update_chat_fade()
             if self.chat_scroll_applying then return end
             if not self.chat_scroll_user_input
                 and not self.chat_scroll_mouse_down then
@@ -971,6 +999,7 @@ function UI:render_chat()
         self:schedule_chat_follow()
     end
     node.inner_rml = table.concat(output)
+    self:update_chat_fade()
 end
 
 function UI:render_sightings()
