@@ -27,7 +27,7 @@ The original clients at [skynet-client](https://github.com/haxmeister/skynet-cli
 
 We use that proven original design again, **not** the separate IUP dialog or the currently non-functional inline RmlUi input. VO's built-in prompt should provide its normal text focus, Enter and Escape handling.
 
-**The chat hotkey is hard-coded to `A`.** On plugin startup, `main.lua` runs `bind A skynetui_chat`, replacing any existing binding on the A key. Press **A** in flight to open VO's native chat prompt. The manual `/skynetui chat` command remains available.
+**The chat hotkey is bound to uppercase `A` (Shift+A).** On plugin startup, `main.lua` runs `bind A skynetui_chat`. Press **Shift+A** in flight to open VO's native chat prompt. The manual `/skynetui chat` command remains available.
 
 The plugin also registers an internal `skynetui_prompt` alias that runs `prompt`. The chat command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
 
@@ -37,15 +37,25 @@ The native prompt remains the default and works as before. The opt-in boolean-in
 
 Draugath's MDI-Core example uses **Lua booleans** with `Game.SetInputMode(not interaction_mode)`. Unlike C, Lua treats `0` as **true**, which means the previous `Game.SetInputMode(0)` test may not have disabled flight input. This branch tests `Game.SetInputMode(false)` while entering chat and `Game.SetInputMode(true)` when leaving the field. It optionally calls `gkinterface.HideMouse()` when restoring flight controls; it does **not** modify the native HUD, show the mouse, or relocate IUP elements.
 
-The branch keeps **A** hard-coded. By default, it still opens VO's working native prompt. To opt into the experiment while flying in a safe sector:
+The branch preserves the existing **uppercase A / Shift+A** binding. This is intentional and was verified with VO's native prompt; there is no lowercase-A binding change. By default, Shift+A still opens the working native prompt. To opt into the first experiment while flying in a safe sector:
 
 ```text
 /skynetui input rml
 ```
 
-Then press **A**. The entry form appears at the bottom of the Skynet alliance-chat column. Test whether letter keys stop controlling the ship **and** whether text appears inside that field. Enter should submit a `LOCAL TEST` line, and Escape should cancel; either should restore normal flight input.
+Then press **Shift+A**. The entry form appears at the bottom of the Skynet alliance-chat column. You already verified that `Game.SetInputMode(false)` stops flight controls, but typing, clicking the text field, Enter, and Escape did not work in that mode. This indicates a separate input-routing problem, not an incorrectly bound key.
 
-**Safety:** An RmlUi input that remains open for 12 seconds automatically cancels and calls `Game.SetInputMode(true)`, even if no key reaches RmlUi. Hiding Skynet or leaving flight also cancels it. If Enter/Escape work, they restore input immediately. For immediate fallback, use `/skynetui input native`, or reload the interface; the default reverts to the native prompt on each load. Do not run the older `/skynetui native dock` IUP experiment simultaneously.
+To test whether VO's native IUP HUD intercepts the remaining input events, switch to the **second, opt-in test**:
+
+```text
+/skynetui input hud
+```
+
+Press **Shift+A** again. This mode temporarily hides `HUD.dlg` using `HideDialog`, calls `Game.SetInputMode(false)`, and focuses the existing RmlUi field. The UI logs up to 30 focus, click, textinput, change, and keydown diagnostics (without recording typed text) so we can distinguish whether any input events are reaching the field. The HUD is restored with `ShowDialog(HUD.dlg)` when input closes.
+
+**Safety:** This is an unverified HUD-level experiment. Test only while stationary in a safe sector. A 12-second timer cancels an open test field, restores the HUD, and calls `Game.SetInputMode(true)` even if neither Enter nor Escape works. If the native HUD fails to reappear, use `ReloadInterface()` or restart the client. You can switch back to VO's working prompt with `/skynetui input native`. Do not use `/skynetui native dock` alongside this experiment.
+
+Both test modes revert to VO's native prompt on the next interface load. Enter/Escape submit or cancel and restore the original controls if RmlUi receives those events.
 
 This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
