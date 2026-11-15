@@ -40,12 +40,13 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-bottom-width: 0px;
     drag: drag;
 }
+#skynet-identity { display: flex; flex-direction: row; align-items: center; }
 #skynet-title {
     font-weight: bold;
     color: #f5a44b;
 }
 #skynet-controls { display: flex; flex-direction: row; align-items: center; }
-#connection-status { margin-right: 9px; }
+#connection-status { margin-left: 4px; }
 #layout-done {
     display: none;
     padding: 2px 6px;
@@ -77,19 +78,6 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     min-width: 0;
     min-height: 0;
     padding: 3px 5px;
-}
-.heading {
-    display: block;
-    flex: 0 0 auto;
-    box-sizing: border-box;
-    height: 18px;
-    min-height: 18px;
-    font-weight: bold;
-    font-size: 11px;
-    /* Blue, underlined section titles; SKYNET is the orange accent. */
-    color: #8bcdf4;
-    text-decoration: underline;
-    white-space: nowrap;
 }
 .scroller {
     display: block;
@@ -136,9 +124,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 .splitter-guide {
     display: block;
     width: 1px;
-    /* Begin below the section headings rather than beside their text.
-       ui.lua sets the exact remaining height when the window is resized. */
-    margin-top: 21px;
+    /* No column titles: guides run from the top to the bottom of
+       each full-height splitter. ui.lua sets the exact height. */
+    margin-top: 0px;
     height: 100%;
     background-color: #4c7188;
     pointer-events: none;
@@ -234,20 +222,20 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
 <body>
   <div id="skynet-panel">
     <div id="skynet-header">
-      <span id="skynet-title">SKYNET</span>
-      <div id="skynet-controls">
+      <div id="skynet-identity">
+        <span id="skynet-title">SKYNET:</span>
         <span id="connection-status">DISCONNECTED</span>
+      </div>
+      <div id="skynet-controls">
         <span id="layout-done">DONE</span>
       </div>
     </div>
     <div id="skynet-columns">
       <div id="online-panel" class="section">
-        <div class="heading">ONLINE (<span id="online-count">0</span>)</div>
         <div id="online-list" class="scroller"></div>
       </div>
       <div id="split-left" class="splitter"><div id="split-left-guide" class="splitter-guide"></div></div>
       <div id="chat-panel" class="section">
-        <div class="heading">ALLIANCE CHAT</div>
         <div id="chat-list" class="scroller"></div>
         <form id="chat-form">
           <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
@@ -255,7 +243,6 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
       </div>
       <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"></div></div>
       <div id="sightings-panel" class="section">
-        <div class="heading">SIGHTINGS</div>
         <div id="sightings-list" class="scroller"></div>
       </div>
     </div>
