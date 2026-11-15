@@ -154,11 +154,13 @@ function UI:set_chat_focus_handler(handler)
 end
 
 function UI:notify_chat_focus(open)
-    if type(self.on_chat_focus) ~= "function" then return end
-    local ok, err = pcall(self.on_chat_focus, open)
+    if type(self.on_chat_focus) ~= "function" then return true end
+    local ok, result = pcall(self.on_chat_focus, open)
     if not ok then
-        print("Skynet UI: chat focus handler failed: " .. tostring(err))
+        print("Skynet UI: chat focus handler failed: " .. tostring(result))
+        return false
     end
+    return result ~= false
 end
 
 -- The RML form handles Enter; keydown handles Escape and is also an Enter
@@ -208,9 +210,18 @@ function UI:begin_chat()
     self.chat_input_open = true
     form.style.display = "block"
     input.value = ""
-    -- Switch VO out of direct flight-input mode before focusing RmlUi.
-    self:notify_chat_focus(true)
-    input:Focus()
+    -- Switch VO out of flight-input mode before asking RmlUi for focus.
+    -- If the game refuses the handoff, do not leave a nonfunctional entry open.
+    if not self:notify_chat_focus(true) then
+        self:cancel_chat()
+        return false
+    end
+    local focused, err = pcall(function() input:Focus() end)
+    if not focused then
+        print("Skynet UI: cannot focus RmlUi chat input: " .. tostring(err))
+        self:cancel_chat()
+        return false
+    end
     return true
 end
 
@@ -220,7 +231,11 @@ function UI:cancel_chat()
     local form, input = self:node("chat-form"), self:node("chat-input")
     if input then
         input.value = ""
-        input:Blur()
+        -- A failed blur must never prevent restoring flight controls.
+        local blurred, err = pcall(function() input:Blur() end)
+        if not blurred then
+            print("Skynet UI: cannot blur chat input: " .. tostring(err))
+        end
     end
     if form then form.style.display = "none" end
     -- The integrator can restore the native flight-input mode.
