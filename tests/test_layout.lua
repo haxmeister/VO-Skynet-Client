@@ -155,7 +155,13 @@ for _, class in ipairs({
     "splitter-guide-end splitter-guide-bottom",
 }) do
     local needle = 'class="' .. class .. '"'
-    local _, count = rml_source:gsub(needle, "")
+    local count, cursor = 0, 1
+    while true do
+        local found = rml_source:find(needle, cursor, true)
+        if not found then break end
+        count = count + 1
+        cursor = found + #needle
+    end
     assert(count == 2, "missing separator segment: " .. class)
 end
 assert(not rml_source:find("mask-image", 1, true))
