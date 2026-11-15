@@ -91,6 +91,13 @@ local ui = UI.new({
     on_chat_focus = function() return true end,
 })
 assert(ui:mount(ctx, doc))
+-- Normal flight mode is content-first, without visible window chrome.
+assert(nodes["skynet-header"].style.display == "none")
+assert(nodes["skynet-panel"].style["border-width"] == "0px")
+assert(nodes["skynet-panel"].style["background-color"]
+    == "rgba(7, 20, 36, 0.72)")
+assert(nodes["split-left"].style["border-left-width"] == "0px")
+assert(nodes["split-right"].style["border-left-width"] == "0px")
 assert(nodes["resize-grip"].style.display == "none")
 -- Initial mount may schedule a follow-to-bottom. Flush it before checking.
 assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
@@ -207,11 +214,19 @@ assert(ui.geometry.height == 166)
 assert(ui.geometry.online == 180)
 assert(ui.geometry.sightings == 160)
 assert(ui.geometry.chat == 280)
-assert(nodes["chat-list"].style.height == "111px")
+assert(nodes["chat-list"].style.height == "138px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
 assert(ui:set_layout_editing(true))
 assert(ui.layout_editing)
+-- The 25px header and strong frame return only in editing mode.
+assert(nodes["skynet-header"].style.display == "flex")
+assert(nodes["skynet-panel"].style["border-width"] == "1px")
+assert(nodes["skynet-panel"].style["background-color"]
+    == "rgba(7, 20, 36, 0.82)")
+assert(nodes["split-left"].style["border-left-width"] == "1px")
+assert(nodes["split-right"].style["border-left-width"] == "1px")
+assert(nodes["chat-list"].style.height == "111px")
 assert(nodes["layout-done"].style.display == "block")
 assert(nodes["resize-grip"].style.display == "block")
 assert(focus[#focus] == true)
@@ -267,6 +282,10 @@ assert(ui.geometry.sightings >= 105)
 
 nodes["layout-done"]:dispatch("click")
 assert(not ui.layout_editing)
+assert(nodes["skynet-header"].style.display == "none")
+assert(nodes["skynet-panel"].style["border-width"] == "0px")
+assert(nodes["split-left"].style["border-left-width"] == "0px")
+assert(nodes["split-right"].style["border-left-width"] == "0px")
 assert(nodes["layout-done"].style.display == "none")
 assert(nodes["resize-grip"].style.display == "none")
 assert(focus[#focus] == false)
@@ -278,4 +297,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: callable-table Timer, delayed-bottom scroll, flood batch, manual scroll, dividers, resize")
+print("PASS: low-chrome flight/edit switch, heights, callable Timer, flood follow, splitters, resize")
