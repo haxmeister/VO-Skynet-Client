@@ -39,7 +39,7 @@ local ids = {
     "tab-angle-4", "skynet-columns", "skynet-title",
     "layout-done", "resize-grip",
     "online-panel", "online-list",
-    "chat-panel", "chat-list", "chat-form", "chat-input",
+    "chat-panel", "chat-list", "chat-form", "chat-input", "chat-top-fade",
     "sightings-panel", "sightings-list", "connection-status",
     "split-left", "split-right", "split-left-guide", "split-right-guide",
 }
@@ -107,8 +107,8 @@ local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
 local angle_css = assert(rml_source:match("%.tab%-angle%-step%s*{([^}]+)}"))
--- RmlUi rgba() alpha is 0..255; 185 is about 73% opacity.
-local shared_fill = "background-color: rgba(7, 20, 36, 185);"
+-- RmlUi rgba() alpha is 0..255; 170 is about 67% opacity.
+local shared_fill = "background-color: rgba(7, 20, 36, 170);"
 assert(tab_css:find(shared_fill, 1, true))
 assert(row_css:find(shared_fill, 1, true))
 assert(angle_css:find(shared_fill, 1, true))
@@ -124,6 +124,15 @@ for i = 1, 4 do
 end
 assert(angle_css:find("height: 6px;", 1, true))
 assert(rml_source:find('id="skynet-tab"', 1, true))
+-- A vertex-colored overlay works without a shader-based text mask.
+-- It must not intercept the chat's wheel or drag events.
+local fade_css = assert(rml_source:match("#chat%-top%-fade%s*{([^}]+)}"))
+assert(fade_css:find("position: absolute;", 1, true))
+assert(fade_css:find("pointer-events: none;", 1, true))
+assert(fade_css:find("decorator: vertical-gradient(", 1, true))
+assert(fade_css:find("rgba(7, 20, 36, 240)", 1, true))
+assert(fade_css:find("rgba(7, 20, 36, 0)", 1, true))
+assert(rml_source:find('id="chat-top-fade"', 1, true))
 -- Validate all rgba() declarations to prevent accidental CSS-style alpha
 -- values from returning in future visual changes.
 for channels in rml_source:gmatch("rgba%(([^)]*)%)") do
@@ -149,6 +158,8 @@ ui:set_connected(false)
 assert(nodes["connection-status"].inner_rml:find(">DISCONNECTED<", 1, true))
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
+assert(nodes["chat-top-fade"].style.display == "none")
+assert(nodes["chat-top-fade"].style.width == "259px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
@@ -200,6 +211,7 @@ delayed.scroll_top = 0
 local first_pass = scroll_timer.callback
 first_pass()
 assert(delayed.scroll_top == 40)
+assert(nodes["chat-top-fade"].style.display == "block")
 delayed.scroll_height = 900
 local second_pass = scroll_timer.callback
 second_pass()
@@ -235,15 +247,25 @@ list.scroll_height = 520 -- simulate RmlUi relayout after DOM replacement
 list.scroll_top = 0
 list:dispatch("scroll") -- synthetic event from reflow is NOT user intent
 assert(ui.chat_follow_bottom == true)
+assert(nodes["chat-top-fade"].style.display == "none")
 flush_follow()
+assert(nodes["chat-top-fade"].style.display == "block")
 assert(list.scroll_top == 440)
 assert(ui.chat_scroll_pending == false)
+
+-- Returning to the very top makes the oldest message completely readable.
+list.scroll_top = 0
+list:dispatch("mousescroll")
+list:dispatch("scroll")
+assert(nodes["chat-top-fade"].style.display == "none")
+assert(ui.chat_follow_bottom == false)
 
 -- User intentionally scrolls upward: do not snap back on new messages.
 list.scroll_top = 100
 list:dispatch("mousescroll") -- real mouse-wheel intent precedes scroll
 list:dispatch("scroll")
 assert(ui.chat_follow_bottom == false)
+assert(nodes["chat-top-fade"].style.display == "block")
 list.scroll_height = 560
 ui:add_chat("TEST", "should stay at manually selected position")
 assert(list.scroll_top == 100)
@@ -336,6 +358,8 @@ nodes["split-right"]:dispatch("drag", {mouse_x = 680, mouse_y = 660})
 nodes["split-right"]:dispatch("dragend")
 assert(ui.geometry.sightings == 190)
 assert(ui.geometry.chat >= 160)
+assert(nodes["chat-top-fade"].style.width
+    == tostring(ui.geometry.chat - 21) .. "px")
 
 -- History viewport must shrink exactly by input row height, then recover.
 local before = tonumber(nodes["chat-list"].style.height:match("^(%d+)px$"))
@@ -382,4 +406,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: 73%-opaque tab and unified column background, filled gutters, stepped tab, flood follow")
+print("PASS: 67%-opaque panel, shader-free chat top fade, scroll visibility, gutter fill, resize")
