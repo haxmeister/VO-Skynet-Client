@@ -150,7 +150,7 @@ local function refresh()
 end
 ticker:SetTimeout(1000, refresh)
 
--- Do not bind a key automatically: preserve the user's skynetui_chat bind.
+-- VO's original Skynet chat prompt is bound to A during initialization.
 local function activate_chat()
     sync_visibility()
     if not ui.visible then return end
@@ -175,9 +175,17 @@ RegisterUserCommand("skynetui", function(_, args)
     sync_visibility()
 end)
 
--- VO's /bind can target this command: /bind F8 skynetui_chat
+-- Hard-code the chat hotkey to A, matching the requested behavior.
+-- This deliberately replaces any existing binding for the A key.
 RegisterUserCommand("skynetui_chat", function()
     activate_chat()
 end)
 
-print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat (native VO prompt)")
+if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
+    local ok_bind, bind_err = pcall(gkinterface.GKProcessCommand, "bind A skynetui_chat")
+    if not ok_bind then
+        print("Skynet UI: cannot bind A to chat: " .. tostring(bind_err))
+    end
+end
+
+print("Skynet UI prototype loaded; A opens chat (native VO prompt)")
