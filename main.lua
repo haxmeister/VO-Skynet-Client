@@ -64,6 +64,57 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
+-- Reversible keyboard routing test based on Draugath's MDI-Core:
+-- Game.SetInputMode(false) while interacting; true for normal flight.
+-- The previous Game.SetInputMode(0) test was NOT equivalent: Lua 0 is true.
+-- We do not touch HUD.dlg or move the native IUP chat widget.
+local chat_input_mode = "native" -- default remains the proven VO prompt
+local flight_input_paused = false
+local input_trial_serial = 0
+local input_recovery_timer = Timer()
+
+ui:set_chat_focus_handler(function(open)
+    input_trial_serial = input_trial_serial + 1
+    if open then
+        if not Game or type(Game.SetInputMode) ~= "function" then
+            print("Skynet UI: Game.SetInputMode unavailable; RmlUi input test aborted")
+            return false
+        end
+        local ok_mode, mode_err = pcall(Game.SetInputMode, false)
+        if not ok_mode then
+            print("Skynet UI: cannot switch to UI input: " .. tostring(mode_err))
+            return false
+        end
+        flight_input_paused = true
+        print("Skynet UI: Game.SetInputMode(false); RmlUi input requested")
+        -- Independent of Enter/Escape working: never trap flight input forever.
+        local this_trial = input_trial_serial
+        input_recovery_timer:SetTimeout(12000, function()
+            if input_trial_serial == this_trial and ui.chat_input_open then
+                print("Skynet UI: RmlUi input test timed out; restoring flight controls")
+                ui:cancel_chat()
+            end
+        end)
+        return true
+    end
+
+    if flight_input_paused then
+        flight_input_paused = false
+        local ok_mode, mode_err = pcall(Game.SetInputMode, true)
+        if not ok_mode then
+            print("Skynet UI: FAILED to restore Game.SetInputMode(true): "
+                .. tostring(mode_err))
+        else
+            print("Skynet UI: Game.SetInputMode(true); flight controls restored")
+        end
+        if is_flying() and gkinterface
+            and type(gkinterface.HideMouse) == "function" then
+            pcall(gkinterface.HideMouse)
+        end
+    end
+    return true
+end)
+
 -- Original Skynet/skynet2 used VO's built-in chat prompt instead of an
 -- IUP dialog. This lets VO handle typing, Enter, Escape, and flight focus.
 -- Keep the colored command name EXACTLY in sync with the prompt alias.
@@ -154,14 +205,24 @@ local function refresh()
 end
 ticker:SetTimeout(1000, refresh)
 
--- VO's original Skynet chat prompt is bound to A during initialization.
+-- A always remains the hard-coded chat hotkey. In the test mode it
+-- opens the inline RmlUi field instead of VO's normal chat prompt.
 local function activate_chat()
     sync_visibility()
     if not ui.visible then return end
-    open_chat_prompt()
+    if ui.chat_input_open then
+        ui:cancel_chat()
+    elseif chat_input_mode == "rml" then
+        if not ui:begin_chat() then
+            print("Skynet UI: RmlUi chat input could not open; "
+                .. "use /skynetui input native to revert")
+        end
+    else
+        open_chat_prompt()
+    end
 end
 
--- /skynetui hide|show|demo|chat|native probe|dock|restore
+-- /skynetui hide|show|demo|chat|input rml|native|native probe|dock|restore
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -172,6 +233,26 @@ RegisterUserCommand("skynetui", function(_, args)
         ui:add_sighting("Drake", "Vult", "Odia M-14")
     elseif command == "chat" then
         activate_chat()
+        return
+    elseif command == "input" then
+        local mode = args and args[2]
+        if mode == "rml" then
+            -- Never combine this test with the unverified IUP relocation test.
+            if not NativeChat.restore(ui) then
+                print("Skynet UI: restore IUP chat first; input mode unchanged")
+                return
+            end
+            ui:cancel_chat()
+            chat_input_mode = "rml"
+            print("Skynet UI: A now tests inline RmlUi input; "
+                .. "auto-recovery after 12 seconds")
+        elseif mode == "native" then
+            ui:cancel_chat()
+            chat_input_mode = "native"
+            print("Skynet UI: A restored to native VO prompt")
+        else
+            print("Skynet UI: /skynetui input rml|native")
+        end
         return
     elseif command == "native" then
         local action = args and args[2] or "probe"
@@ -205,4 +286,4 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
     end
 end
 
-print("Skynet UI prototype loaded; A opens chat; /skynetui native probe|dock|restore")
+print("Skynet UI prototype loaded; A opens native chat; /skynetui input rml|native")
