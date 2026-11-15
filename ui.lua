@@ -289,14 +289,18 @@ function UI:layout()
         local node = self:node(id)
         if node then
             node.style.height = px(section_height)
-            -- Leave one very faint vertical guide during flight, and make
-            -- it prominent for dragging in layout-edit mode. Width stays
-            -- fixed so changing modes doesn't disturb column geometry.
-            node.style["border-left-width"] = "1px"
-            node.style["border-color"] = editing
-                and "#386984" or "rgba(56, 105, 132, 0.24)"
+            -- The full 8px gutter still receives drag events. Its border
+            -- stays off so there can never be two separating lines.
+            node.style["border-width"] = "0px"
             node.style["background-color"] = editing
                 and "rgba(23, 62, 83, 0.25)" or "transparent"
+        end
+        local guide = self:node(id .. "-guide")
+        if guide then
+            -- A solid 1px child is more reliable in VO than a translucent
+            -- border. Muted steel-blue in flight, brighter for layout.
+            guide.style["background-color"] =
+                editing and "#75a9c8" or "#4c7188"
         end
     end
 
