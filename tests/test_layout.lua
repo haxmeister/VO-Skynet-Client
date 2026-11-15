@@ -128,7 +128,8 @@ assert(rml_source:find('id="skynet-tab"', 1, true))
 -- It must not intercept the chat's wheel or drag events.
 local fade_css = assert(rml_source:match("#chat%-top%-fade%s*{([^}]+)}"))
 assert(fade_css:find("position: absolute;", 1, true))
-assert(fade_css:find("top: 11px;", 1, true))
+assert(fade_css:find("top: 0px;", 1, true))
+assert(fade_css:find("height: 37px;", 1, true))
 assert(fade_css:find("pointer-events: none;", 1, true))
 assert(fade_css:find("decorator: vertical-gradient(", 1, true))
 assert(fade_css:find("rgba(7, 20, 36, 240)", 1, true))
@@ -423,13 +424,28 @@ sighting_ui.document = {
 sighting_ui:add_sighting("FadePilot", "Vult", "B-8", fake_time)
 assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
 assert(sighting_node.inner_rml:find("0s</span>", 1, true))
+-- Rows stay 100% opaque until their last 15% (51s out of 60s).
 fake_time = 5030
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 0.56;"', 1, true))
+assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
 assert(sighting_node.inner_rml:find("30s</span>", 1, true))
+fake_time = 5050
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
+fake_time = 5051
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 1.00;"', 1, true))
+-- Final 9 seconds of the 60-second TTL blend toward 12%.
+fake_time = 5054
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 0.71;"', 1, true))
+assert(sighting_node.inner_rml:find("54s</span>", 1, true))
+fake_time = 5057
+sighting_ui:tick()
+assert(sighting_node.inner_rml:find('style="opacity: 0.41;"', 1, true))
 fake_time = 5059
 sighting_ui:tick()
-assert(sighting_node.inner_rml:find('style="opacity: 0.13;"', 1, true))
+assert(sighting_node.inner_rml:find('style="opacity: 0.22;"', 1, true))
 assert(sighting_node.inner_rml:find("59s</span>", 1, true))
 fake_time = 5060
 sighting_ui:tick()
@@ -441,9 +457,9 @@ assert(sighting_node.inner_rml == "")
 local main_file = assert(io.open("main.lua", "r"))
 local main_source = main_file:read("*a")
 main_file:close()
-assert(main_source:find("local phases = {0, 0.20, 0.40, 0.60, 0.80, 0.95}", 1, true))
+assert(main_source:find("local phases = {0, 0.70, 0.85, 0.90, 0.95, 0.98}", 1, true))
 assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: 35% transparency, lower chat fade, fading/expiring sightings, flood demonstration")
+print("PASS: chat fade covers first line, sightings fade only in last 15%, flood samples")
