@@ -110,6 +110,7 @@ local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
 assert(row_css:find(shared_fill, 1, true))
 assert(section_css:find("background-color: transparent;", 1, true))
+assert(section_css:find("padding: 8px 5px 3px;", 1, true))
 assert(row_css:find("padding: 0px 3px 4px;", 1, true))
 assert(tab_css:find("border-radius: 11px;", 1, true))
 assert(tab_css:find("height: 22px;", 1, true))
@@ -117,7 +118,46 @@ assert(chat_css:find("overflow-y: scroll;", 1, true))
 assert(not chat_css:find("position: relative;", 1, true))
 assert(not rml_source:find("columns-top-fade", 1, true))
 assert(not rml_source:find("columns-solid-fill", 1, true))
-assert(not rml_source:find("vertical-gradient", 1, true))
+-- Only the 1px separator tips may use visual gradients; column and chat
+-- backgrounds stay uniform, and sightings retain the sole text fade.
+assert(not row_css:find("vertical-gradient", 1, true))
+assert(not section_css:find("vertical-gradient", 1, true))
+local guide_css = assert(rml_source:match("%.splitter%-guide%s*{([^}]+)}"))
+local middle_css = assert(rml_source:match("%.splitter%-guide%-middle%s*{([^}]+)}"))
+local tip_css = assert(rml_source:match("%.splitter%-guide%-end%s*{([^}]+)}"))
+local top_css = assert(rml_source:match("%.splitter%-guide%-top%s*{([^}]+)}"))
+local bottom_css = assert(rml_source:match("%.splitter%-guide%-bottom%s*{([^}]+)}"))
+local edit_middle = assert(rml_source:match(
+    "#skynet%-panel%.layout%-edit %.splitter%-guide%-middle%s*{([^}]+)}"))
+local edit_top = assert(rml_source:match(
+    "#skynet%-panel%.layout%-edit %.splitter%-guide%-top%s*{([^}]+)}"))
+local edit_bottom = assert(rml_source:match(
+    "#skynet%-panel%.layout%-edit %.splitter%-guide%-bottom%s*{([^}]+)}"))
+assert(guide_css:find("width: 1px;", 1, true))
+assert(guide_css:find("display: flex;", 1, true))
+assert(guide_css:find("background-color: transparent;", 1, true))
+assert(tip_css:find("height: 12px;", 1, true))
+assert(middle_css:find("flex: 1 1 auto;", 1, true))
+assert(middle_css:find("background-color: #4c7188;", 1, true))
+assert(edit_middle:find("background-color: #75a9c8;", 1, true))
+for _, spec in ipairs({
+    {top_css, "rgba(76, 113, 136, 0) rgba(76, 113, 136, 255)"},
+    {bottom_css, "rgba(76, 113, 136, 255) rgba(76, 113, 136, 0)"},
+    {edit_top, "rgba(117, 169, 200, 0) rgba(117, 169, 200, 255)"},
+    {edit_bottom, "rgba(117, 169, 200, 255) rgba(117, 169, 200, 0)"},
+}) do
+    assert(spec[1]:find("decorator: vertical-gradient(", 1, true))
+    assert(spec[1]:find(spec[2], 1, true))
+end
+for _, class in ipairs({
+    "splitter-guide-end splitter-guide-top",
+    "splitter-guide-middle",
+    "splitter-guide-end splitter-guide-bottom",
+}) do
+    local needle = 'class="' .. class .. '"'
+    local _, count = rml_source:gsub(needle, "")
+    assert(count == 2, "missing separator segment: " .. class)
+end
 assert(not rml_source:find("mask-image", 1, true))
 assert(not rml_source:find("chat-top-fade", 1, true))
 assert(rml_source:find(".chat-row {", 1, true))
@@ -132,6 +172,10 @@ local ui_file = assert(io.open("ui.lua", "r"))
 local ui_source = ui_file:read("*a")
 ui_file:close()
 assert(ui_source:find('"rgba(23, 62, 83, 64)"', 1, true))
+assert(ui_source:find("local SECTION_PADDING = 11", 1, true))
+-- Color belongs to RCSS on the three line pieces, not a full-height
+-- inline background on the parent that would hide the faded tips.
+assert(not ui_source:find('guide.style["background-color"]', 1, true))
 assert(rml_source:find("padding: 0px 3px 4px;", 1, true))
 assert(rml_source:find('id="skynet-title">SKYNET:</span>', 1, true))
 
@@ -148,8 +192,8 @@ assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
-assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
-assert(nodes["split-right-guide"].style["background-color"] == "#4c7188")
+assert(nodes["split-left-guide"].style["background-color"] == nil)
+assert(nodes["split-right-guide"].style["background-color"] == nil)
 -- No section labels: guides fill the entire height of the 8px splitters.
 assert(nodes["split-left-guide"].style["margin-top"] == "0px")
 assert(nodes["split-right-guide"].style["margin-top"] == "0px")
@@ -284,9 +328,10 @@ assert(ui.geometry.chat == 280)
 local class_updates = nodes["skynet-panel"].class_updates
 ui:layout()
 assert(nodes["skynet-panel"].class_updates == class_updates)
-assert(nodes["chat-list"].style.height == "131px")
-assert(nodes["online-list"].style.height == "131px")
-assert(nodes["sightings-list"].style.height == "131px")
+-- The 5px extra top inset comes from the lists, not the drag gutters.
+assert(nodes["chat-list"].style.height == "126px")
+assert(nodes["online-list"].style.height == "126px")
+assert(nodes["sightings-list"].style.height == "126px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
 assert(ui:set_layout_editing(true))
@@ -299,8 +344,8 @@ assert(nodes["skynet-panel"].style["border-width"] == "1px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
-assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
-assert(nodes["split-right-guide"].style["background-color"] == "#75a9c8")
+assert(nodes["split-left-guide"].style["background-color"] == nil)
+assert(nodes["split-right-guide"].style["background-color"] == nil)
 assert(nodes["split-left-guide"].style["margin-top"] == "0px")
 assert(nodes["split-right-guide"].style["margin-top"] == "0px")
 assert(nodes["split-left-guide"].style.height == "135px")
@@ -308,9 +353,9 @@ assert(nodes["split-right-guide"].style.height == "135px")
 assert(nodes["split-left"].style.height == "135px")
 assert(nodes["split-right"].style.height == "135px")
 assert(nodes["skynet-panel"].classes["layout-edit"] == true)
-assert(nodes["chat-list"].style.height == "129px")
-assert(nodes["online-list"].style.height == "129px")
-assert(nodes["sightings-list"].style.height == "129px")
+assert(nodes["chat-list"].style.height == "124px")
+assert(nodes["online-list"].style.height == "124px")
+assert(nodes["sightings-list"].style.height == "124px")
 assert(nodes["layout-done"].style.display == "block")
 assert(nodes["resize-grip"].style.display == "block")
 assert(focus[#focus] == true)
@@ -370,8 +415,8 @@ assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
-assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
-assert(nodes["split-right-guide"].style["background-color"] == "#4c7188")
+assert(nodes["split-left-guide"].style["background-color"] == nil)
+assert(nodes["split-right-guide"].style["background-color"] == nil)
 assert(nodes["skynet-panel"].classes["layout-edit"] == false)
 assert(nodes["layout-done"].style.display == "none")
 assert(nodes["resize-grip"].style.display == "none")
@@ -478,4 +523,4 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: uniform navy background, fully readable chat, scrolling and smooth sighting fade")
+print("PASS: 8px top inset, fading 1px guide tips, scroll/layout and sighting fade")
