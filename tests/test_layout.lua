@@ -545,6 +545,64 @@ sighting_ui:tick()
 assert(sighting_ui.sightings.FadePilot == nil)
 assert(sighting_list.inner_rml == "")
 
+-- Sightings follow the TOP, unlike the chat's BOTTOM follow.
+-- Equal-timestamp arrivals must be ordered by insertion, not by name.
+-- Manually browsing older sightings is permitted until a new one arrives.
+local newest_clock = 7000
+local top_list = element("sightings-list")
+local top_retry = {schedules = 0}
+function top_retry:SetTimeout(ms, callback)
+    assert(ms == 40)
+    self.schedules = self.schedules + 1
+    self.callback = callback
+end
+function top_retry:Kill() self.callback = nil end
+local idle_fade_timer = {}
+function idle_fade_timer:SetTimeout(ms, callback)
+    self.callback = callback
+end
+function idle_fade_timer:Kill() self.callback = nil end
+local top_ui = UI.new({
+    clock = function() return newest_clock end,
+    sighting_ttl = 60,
+    sighting_top_timer = top_retry,
+    sighting_fade_timer = idle_fade_timer,
+})
+top_ui.document = {
+    GetElementById = function(_, id)
+        if id == "sightings-list" then return top_list end
+    end,
+}
+top_list.scroll_top = 65
+top_ui:add_sighting("Alpha", "Vult", "B-8", newest_clock)
+assert(top_list.scroll_top == 0)
+assert(top_retry.schedules == 1)
+top_list.scroll_top = 60
+top_ui:add_sighting("Beta", "Vult", "B-8", newest_clock)
+assert(top_list.scroll_top == 0)
+assert(top_retry.schedules == 1) -- One pending correction, not one per arrival.
+assert(top_ui.sighting_rendered[1].name == "Beta")
+assert(top_ui.sighting_rendered[2].name == "Alpha")
+top_list.scroll_top = 120 -- Simulate deferred RmlUi relayout after new DOM.
+assert(type(top_retry.callback) == "function")
+top_retry.callback()
+assert(top_list.scroll_top == 0)
+assert(top_ui.sighting_top_pending == false)
+-- When a user browses older sightings, aging/rendering alone doesn't
+-- automatically take them back to the top.
+top_list.scroll_top = 42
+top_ui:update_sighting_ages(newest_clock)
+top_ui:render_sightings()
+assert(top_list.scroll_top == 42)
+-- The next new sighting again brings the latest event into view.
+top_ui:add_sighting("Zeta", "Vult", "B-8", newest_clock)
+assert(top_list.scroll_top == 0)
+assert(top_ui.sighting_rendered[1].name == "Zeta")
+assert(top_retry.schedules == 2)
+top_ui:hide()
+assert(top_ui.sighting_top_pending == false)
+assert(top_retry.callback == nil)
+
 -- No chat opacity tracking, row measurements, or background gradient
 -- should remain; chat text must be fully legible while scrolling.
 assert(not ui_source:find("update_chat_fade", 1, true))
@@ -620,4 +678,4 @@ assert(save_pref(legacy))
 assert(persisted == "220,585,650,216,40,190")
 gkini, Game = old_gkini, old_game
 
-print("PASS: online/sightings overflow tests, layout persistence, chat follow and sighting fade")
+print("PASS: sightings top-follow/newest-first, independent scroll, layout and fade")
