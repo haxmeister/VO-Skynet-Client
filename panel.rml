@@ -4,7 +4,7 @@
 <style>
 /* VO RmlUi has no default HTML/scrollbar styles. All dimensions are explicit.
    CRITICAL: RmlUi RGBA alpha is 0..255, not the browser's 0..1!
-   rgba(7, 20, 36, 185) is roughly 73% opaque, whereas 0.92 is invisible. */
+   rgba(7, 20, 36, 170) is roughly 67% opaque, whereas 0.92 is invisible. */
 div, form { display: block; }
 body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color: #e4ecf6; }
 #skynet-panel {
@@ -58,7 +58,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     height: 24px;
     padding: 3px 9px;
-    background-color: rgba(7, 20, 36, 185);
+    background-color: rgba(7, 20, 36, 170);
     border-radius: 5px 0px 0px 0px;
 }
 #skynet-tab-angle {
@@ -72,7 +72,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     display: block;
     height: 6px;
     min-height: 6px;
-    background-color: rgba(7, 20, 36, 185);
+    background-color: rgba(7, 20, 36, 170);
 }
 #tab-angle-1 { width: 4px; }
 #tab-angle-2 { width: 8px; }
@@ -108,7 +108,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
        Align the tab directly to the row; retain geometry/scrolling padding. */
     padding: 0px 3px 4px;
     min-height: 0;
-    background-color: rgba(7, 20, 36, 185);
+    background-color: rgba(7, 20, 36, 170);
 }
 .section {
     display: flex;
@@ -135,7 +135,27 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 #online-panel { width: 180px; }
 #online-list { white-space: nowrap; }
 .online-row { display: block; margin-bottom: 3px; }
-#chat-panel { width: 290px; }
+#chat-panel {
+    width: 290px;
+    /* Anchor the fade to the chat history, not to the whole HUD. */
+    position: relative;
+}
+#chat-top-fade {
+    display: none;
+    position: absolute;
+    top: 3px;
+    left: 5px;
+    height: 26px;
+    /* ui.lua gives this an exact width, stopping before the scrollbar. */
+    width: 250px;
+    pointer-events: none;
+    /* Draw OVER the list, blending text into the navy as it exits at top.
+       RmlUi's vertical-gradient decorator uses vertex colors and does
+       not require advanced shader/mask support. */
+    decorator: vertical-gradient(
+        rgba(7, 20, 36, 240) rgba(7, 20, 36, 0)
+    );
+}
 #chat-list {
     overflow-y: scroll;
     word-break: break-word;
@@ -292,6 +312,7 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
         <form id="chat-form">
           <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
         </form>
+        <div id="chat-top-fade"></div>
       </div>
       <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"></div></div>
       <div id="sightings-panel" class="section">
