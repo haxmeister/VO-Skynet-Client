@@ -31,11 +31,11 @@ We use that proven original design again, **not** the separate IUP dialog or the
 
 The plugin also registers an internal `skynetui_prompt` alias that runs `prompt`. The chat command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
 
-The native prompt remains the default and works as before. The opt-in boolean-input experiment below temporarily switches the same A key to the existing inline RmlUi field.
+The native prompt remains the default and works as before. The opt-in experiment below temporarily switches Shift+A to the validated inline RmlUi field.
 
 ### Experimental RmlUi keyboard input (feature branch)
 
-Draugath's MDI-Core example uses **Lua booleans** with `Game.SetInputMode(not interaction_mode)`. Unlike C, Lua treats `0` as **true**, which means the previous `Game.SetInputMode(0)` test may not have disabled flight input. This branch tests `Game.SetInputMode(false)` while entering chat and `Game.SetInputMode(true)` when leaving the field. It optionally calls `gkinterface.HideMouse()` when restoring flight controls; it does **not** modify the native HUD, show the mouse, or relocate IUP elements.
+Draugath's MDI-Core example uses Lua booleans with `Game.SetInputMode(not interaction_mode)`. Unlike C, Lua treats `0` as true. Testing confirmed that `Game.SetInputMode(false)` disables flight controls, but **does not by itself** let RmlUi receive typing. The `hud` test additionally hides the native IUP HUD, which makes text input work. On close, the plugin restores `HUD.dlg` and calls `Game.SetInputMode(true)`. No IUP controls are moved.
 
 The branch preserves the existing **uppercase A / Shift+A** binding. This is intentional and was verified with VO's native prompt; there is no lowercase-A binding change. By default, Shift+A still opens the working native prompt. To opt into the first experiment while flying in a safe sector:
 
@@ -59,21 +59,19 @@ Both test modes revert to VO's native prompt on the next interface load. Enter/E
 
 This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
-### Confirmed RmlUi text entry; submit and cleanup test
+### Verified RmlUi text entry (feature branch)
 
-A live test of `/skynetui input hud` confirmed that text **can** be typed inside Skynet's RmlUi field after the native IUP HUD is hidden and `Game.SetInputMode(false)` is used. However, Enter and Escape brought the HUD back without a delivered chat message, and the text remained in the field on the next attempt. This is a submit/cleanup issue, not the earlier keyboard-routing failure.
+Live VO testing confirmed that the RmlUi chat input accepts typed text and that **Enter submits**, **Escape cancels**, and the input clears when closed. RmlUi exposes edited text through `change` event `event.parameters.value`, not the generic Element's `input.value` property. Submission echoes `LOCAL TEST: ...` in Skynet's chat history. Text is not sent to any server.
 
-This branch now adds actual **Send** (RmlUi form submit) and **Cancel** (RmlUi button) controls next to the field. The UI also checks `keydown` and `keyup` for Enter/Escape and prints diagnostics showing: the event and key identifier, whether form-submit or the Send button was used, the submitted text length **without displaying user text**, whether the UI callback delivered it, and the reason input closed. If VO independently re-shows its native HUD, the plugin logs that condition and cancels the stale input instead of leaving it active.
+The temporary Send and Cancel buttons used for debugging have now been removed. **Shift+A** is the unchanged chat hotkey. Enable the experiment with:
 
-Re-test with `/skynetui input hud`, press **Shift+A**, type a very short test message, then try the **Send** button (mouse click). Next try Enter and Escape in separate attempts. Distinguish a real submit (`LOCAL TEST` appears) from an unexpected HUD reappearance or 12-second safety timeout by checking the `Skynet UI:` and `Skynet RmlUi input:` lines in the VO errors log. The 12-second timeout and `/skynetui input native` fallback remain in place.
+```text
+/skynetui input hud
+```
 
-### Log-confirmed fix for missing RmlUi message value (November 14)
+The remaining blocker is native-HUD interaction: text entry currently works only when the plugin temporarily hides `HUD.dlg`. Doing so is visually disruptive and is **not acceptable as the final design**. This experiment is opt-in and stays on the feature branch; no changes have been merged to `main`. The next investigation should isolate the IUP element or input interception preventing RmlUi interaction, without toggling the entire ship HUD.
 
-In the Nov 14, 18:51 VO run, RmlUi successfully delivered `keydown`, `textinput`, and `change` events. Enter arrived as key 72, Escape as 81, and the Send button's click handler fired. Both Enter and Send reported `text length=0` and `message delivered=false`, while `Focus()` reported a non-string `input.value`. The failure was reading the input value through the generic element wrapper, **not keyboard routing or a missing submit callback**.
-
-This revision captures the live message from `change` event `event.parameters.value`; `submit` handlers can also read the named form parameter `event.parameters.message`. Enter and Send use the captured value. The input is now cleared with `input:SetAttribute("value", "")` rather than assigning an unsupported `input.value` property. Text itself is never printed to the log, only lengths and event types.
-
-Test `/skynetui input hud` → **Shift+A** → type a short message → **Enter**. It should appear as `LOCAL TEST: ...` in the RmlUi alliance chat, clear the input, and restore the HUD and flight controls. Repeat with **Send** and **Escape**. This is still client-unverified after the revision; if message length remains 0, inspect the `change captured, length=` or `change value type=` diagnostics.
+The 12-second recovery timer restores the IUP HUD and flight controls if the RmlUi input remains open. `/skynetui input native` reselects the original working VO chat prompt, which remains the default on reload. No IUP reparenting is necessary for the validated RmlUi typing behavior.
 
 ### Flight-only visibility
 
