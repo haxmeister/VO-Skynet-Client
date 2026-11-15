@@ -411,7 +411,7 @@ assert(ui.geometry.height <= 400)
 assert(ui.geometry.left + ui.geometry.width <= 650)
 assert(ui.geometry.top + ui.geometry.height <= 400)
 assert(ui.geometry.chat >= 160)
-assert(ui.geometry.online >= 95)
+assert(ui.geometry.online >= 40)
 assert(ui.geometry.sightings >= 105)
 
 nodes["layout-done"]:dispatch("click")
@@ -428,6 +428,30 @@ assert(nodes["layout-done"].style.display == "none")
 assert(nodes["resize-grip"].style.display == "none")
 assert(focus[#focus] == false)
 assert(#saves == 5)
+
+-- The online column used to stop at 95px. Let the user drag down to
+-- 40px, without changing the minimum chat width or splitter hit target.
+ctx.dimensions.x, ctx.dimensions.y = 1024, 806
+assert(ui:set_layout_editing(true))
+nodes["split-left"]:dispatch("dragstart", {mouse_x = 400, mouse_y = 660})
+nodes["split-left"]:dispatch("drag", {mouse_x = 100, mouse_y = 660})
+nodes["split-left"]:dispatch("dragend")
+assert(ui.geometry.online == 40)
+assert(ui.geometry.chat >= 160)
+assert(saves[#saves].online == 40)
+assert(ui:set_layout_editing(false))
+-- A new UI instance should load all saved dimensions and positions.
+local last_geometry = saves[#saves]
+local restored_ui = UI.new({
+    load_geometry = function() return last_geometry end,
+})
+restored_ui.context = ctx
+assert(restored_ui:normalize_geometry())
+for _, field in ipairs({"left", "top", "width", "height",
+                         "online", "sightings"}) do
+    assert(restored_ui.geometry[field] == last_geometry[field],
+        "failed to restore " .. field)
+end
 
 assert(ui:reset_layout())
 assert(ui.geometry.left >= 0)
@@ -529,4 +553,49 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: 8px top inset, fading 1px guide tips, scroll/layout and sighting fade")
+-- Exercise actual preference serialization from main.lua without loading
+-- the whole in-game entry point. VO exposes gkini.ReadString/WriteString.
+local pref_begin = assert(main_source:find("local LAYOUT_SECTION =", 1, true))
+local pref_end = assert(main_source:find("local ui = UI.new({", pref_begin, true))
+local pref_code = main_source:sub(pref_begin, pref_end - 1)
+    .. "\nreturn load_geometry, save_geometry"
+local compile = loadstring or load
+local load_pref, save_pref = assert(compile(pref_code))()
+local old_gkini, old_game = gkini, Game
+local persisted = nil
+gkini = {
+    ReadString = function(section, key, default)
+        assert(section == "skynetui" and key == "layout_v1")
+        return persisted or default
+    end,
+    WriteString = function(section, key, value)
+        assert(section == "skynetui" and key == "layout_v1")
+        persisted = value
+        return true
+    end,
+}
+Game = nil
+assert(load_pref() == nil)
+assert(save_pref(last_geometry))
+assert(type(persisted) == "string")
+local loaded = assert(load_pref())
+for _, field in ipairs({"left", "top", "width", "height",
+                         "online", "sightings"}) do
+    assert(loaded[field] == last_geometry[field],
+        "gkini round-trip failed: " .. field)
+end
+-- Migrate a layout stored using the previous Game preference API.
+persisted = nil
+Game = {
+    GetPrefString = function(key, default)
+        assert(key == "skynetui.layout.v1")
+        return table.concat({"220", "585", "650", "216", "40", "190"}, ",")
+    end,
+}
+local legacy = assert(load_pref())
+assert(legacy.online == 40 and legacy.sightings == 190)
+assert(save_pref(legacy))
+assert(persisted == "220,585,650,216,40,190")
+gkini, Game = old_gkini, old_game
+
+print("PASS: 40px online minimum, gkini persistence, layout drag, smooth sighting fade")
