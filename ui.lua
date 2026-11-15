@@ -330,8 +330,9 @@ function UI:begin_chat()
         return false
     end
     if self.chat_diagnostics then
-        local len = type(input.value) == "string" and #input.value or -1
-        print("Skynet RmlUi input: Focus() called; initial text length=" .. len)
+        print("Skynet RmlUi input: Focus() called; draft length="
+            .. #self.chat_draft
+            .. "; Element.value type=" .. type(input.value))
     end
     return true
 end
