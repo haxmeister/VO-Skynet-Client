@@ -18,6 +18,11 @@ local function element(id)
     function node:GetAttribute(key)
         return self.attrs[key]
     end
+    function node:SetClass(name, value)
+        self.classes = self.classes or {}
+        self.classes[name] = value
+        self.class_updates = (self.class_updates or 0) + 1
+    end
     function node:Focus() self.focused = true end
     function node:Blur() self.focused = false end
     function node:dispatch(kind, parameters)
@@ -96,8 +101,13 @@ assert(nodes["skynet-header"].style.display == "none")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.72)")
-assert(nodes["split-left"].style["border-left-width"] == "0px")
-assert(nodes["split-right"].style["border-left-width"] == "0px")
+assert(nodes["split-left"].style["border-left-width"] == "1px")
+assert(nodes["split-right"].style["border-left-width"] == "1px")
+assert(nodes["split-left"].style["border-color"]
+    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["split-right"].style["border-color"]
+    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["skynet-panel"].classes["layout-edit"] == false)
 assert(nodes["resize-grip"].style.display == "none")
 -- Initial mount may schedule a follow-to-bottom. Flush it before checking.
 assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
@@ -214,6 +224,10 @@ assert(ui.geometry.height == 166)
 assert(ui.geometry.online == 180)
 assert(ui.geometry.sightings == 160)
 assert(ui.geometry.chat == 280)
+-- No unnecessary class reapplication during periodic layout updates.
+local class_updates = nodes["skynet-panel"].class_updates
+ui:layout()
+assert(nodes["skynet-panel"].class_updates == class_updates)
 assert(nodes["chat-list"].style.height == "138px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
@@ -226,6 +240,9 @@ assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.82)")
 assert(nodes["split-left"].style["border-left-width"] == "1px")
 assert(nodes["split-right"].style["border-left-width"] == "1px")
+assert(nodes["split-left"].style["border-color"] == "#386984")
+assert(nodes["split-right"].style["border-color"] == "#386984")
+assert(nodes["skynet-panel"].classes["layout-edit"] == true)
 assert(nodes["chat-list"].style.height == "111px")
 assert(nodes["layout-done"].style.display == "block")
 assert(nodes["resize-grip"].style.display == "block")
@@ -284,8 +301,13 @@ nodes["layout-done"]:dispatch("click")
 assert(not ui.layout_editing)
 assert(nodes["skynet-header"].style.display == "none")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
-assert(nodes["split-left"].style["border-left-width"] == "0px")
-assert(nodes["split-right"].style["border-left-width"] == "0px")
+assert(nodes["split-left"].style["border-left-width"] == "1px")
+assert(nodes["split-right"].style["border-left-width"] == "1px")
+assert(nodes["split-left"].style["border-color"]
+    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["split-right"].style["border-color"]
+    == "rgba(56, 105, 132, 0.24)")
+assert(nodes["skynet-panel"].classes["layout-edit"] == false)
 assert(nodes["layout-done"].style.display == "none")
 assert(nodes["resize-grip"].style.display == "none")
 assert(focus[#focus] == false)
@@ -297,4 +319,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: low-chrome flight/edit switch, heights, callable Timer, flood follow, splitters, resize")
+print("PASS: hidden scrollbars via layout class, faint dividers, callable Timer, flood follow, resize")
