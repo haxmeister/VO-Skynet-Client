@@ -60,6 +60,8 @@ function UI.new(options)
     self.chat_diagnostic_events = 0
     self.on_chat_submit = options.on_chat_submit
     self.on_chat_focus = options.on_chat_focus
+    self.text_entry_class = options.text_entry_class
+    self.chat_entry = nil
     self.online = {}
     self.chat = {}
     self.sightings = {}
@@ -168,286 +170,92 @@ end
 
 function UI:set_chat_diagnostics(enabled)
     self.chat_diagnostics = not not enabled
-    self.chat_diagnostic_events = 0
+    if self.chat_entry then
+        self.chat_entry:set_diagnostics(self.chat_diagnostics)
+    end
 end
 
--- Enter submits, Escape cancels, and Tab calls VO's own TabCompleteName cache.
--- The working VO client reports key identifiers 72 / 81 for Enter / Escape.
--- Keep the form-submit event as a fallback; no visible buttons are required.
+-- Chat delegates low-level RmlUi events to the reusable text-entry module.
+-- Other components can use the same class with their own callbacks.
 function UI:bind_chat_input()
     if self.chat_listeners_bound then return true end
     local form = self:node("chat-form")
     local input = self:node("chat-input")
+    local klass = self.text_entry_class
     if not form or not input then
         print("Skynet UI: RmlUi chat form or input is missing")
         return false
     end
-
-    local key_ids = rmlui and rmlui.key_identifier
-    local esc = (key_ids and key_ids.KI_ESCAPE) or 81
-    local enter = (key_ids and key_ids.KI_RETURN) or 72
-    local num_enter = (key_ids and key_ids.KI_NUMPADENTER) or 61
-    local tab = (key_ids and key_ids.KI_TAB) or 70
-    local end_key = (key_ids and key_ids.KI_END) or 88
-    -- Schedule the synthetic End key for after the original Tab handler,
-    -- avoiding recursive Context::ProcessKeyDown inside its own key callback.
-    local caret_timer = Timer()
-
-    local function trace(kind, extra)
-        if not self.chat_diagnostics or not self.chat_input_open then return end
-        self.chat_diagnostic_events = self.chat_diagnostic_events + 1
-        if self.chat_diagnostic_events <= 35 then
-            print("Skynet RmlUi input: event=" .. kind
-                .. (extra ~= nil and (" value=" .. tostring(extra)) or ""))
-        end
+    if not klass or type(klass.new) ~= "function" then
+        print("Skynet UI: rmlui_text_entry.lua was not provided to UI.new")
+        return false
     end
 
-    -- GetElementById() exposes an Element whose .value may be nil even
-    -- for a working form control. RmlUi's change event carries the live text
-    -- in event.parameters.value. Do not log the actual chat message.
-    input:AddEventListener("change", function(event)
-        if not self.chat_input_open then return end
-        local params = event and event.parameters
-        local value = params and params.value
-        if type(value) == "string" then
+    local entry = klass.new({
+        form = form,
+        input = input,
+        context = self.context,
+        completer = TabCompleteName,
+        diagnostics = self.chat_diagnostics,
+        on_change = function(value)
             self.chat_draft = value
-            if self.chat_diagnostics then
-                print("Skynet RmlUi input: change captured, length=" .. #value)
-            end
-        elseif self.chat_diagnostics then
-            print("Skynet RmlUi input: change value type=" .. type(value))
-        end
-    end, false)
-
-    -- Other listeners are diagnostic only and do not log typed characters.
-    for _, kind in ipairs({"focus", "blur", "click", "textinput"}) do
-        local diagnostic_kind = kind
-        local ok_diagnostic, err = pcall(function()
-            input:AddEventListener(diagnostic_kind, function()
-                trace(diagnostic_kind)
-            end, false)
-        end)
-        if not ok_diagnostic then
-            print("Skynet RmlUi input: cannot register "
-                .. diagnostic_kind .. " diagnostic: " .. tostring(err))
-        end
+        end,
+        on_submit = function(message, source)
+            self:submit_chat(source, message)
+        end,
+        on_cancel = function(reason)
+            self:cancel_chat(reason)
+        end,
+    })
+    local ok, reason = entry:bind()
+    if not ok then
+        print("Skynet UI: cannot bind chat input: " .. tostring(reason))
+        return false
     end
-
-    local function stop(event)
-        if event then
-            pcall(function() event:StopPropagation() end)
-        end
-    end
-
-    -- One-shot name completion uses VO's own cache of previously seen names.
-    -- We only complete a fragment at the END of the draft in this first test;
-    -- RmlUi's generic Element wrapper does not expose the text caret reliably.
-    -- Try the longest suffix first so multi-word player names still work after
-    -- a message prefix ("hello Captain Ja" -> complete "Captain Ja").
-    local function complete_name()
-        if type(TabCompleteName) ~= "function" then
-            print("Skynet UI: TabCompleteName is not available in this plugin")
-            return
-        end
-        local draft = self.chat_draft
-        if type(draft) ~= "string" or draft == "" or not draft:match("%S$") then
-            print("Skynet UI: Tab completion skipped (empty input or trailing space)")
-            return
-        end
-
-        local starts = {1}
-        for i = 1, #draft - 1 do
-            -- A suffix may begin after whitespace or chat punctuation.
-            -- Keep the entire fragment first for multi-word names.
-            if draft:sub(i, i):match("[%s%p]") and
-                not draft:sub(i + 1, i + 1):match("[%s%p]") then
-                starts[#starts + 1] = i + 1
-            end
-        end
-
-        local calls = 0
-        local best, start_at
-        for _, first in ipairs(starts) do
-            local fragment = draft:sub(first)
-            if fragment ~= "" then
-                calls = calls + 1
-                local ok, name = pcall(TabCompleteName, fragment)
-                if not ok then
-                    print("Skynet UI: TabCompleteName failed: " .. tostring(name))
-                    return
-                end
-                if type(name) == "string" and name ~= "" then
-                    best, start_at = name, first
-                    break
-                end
-            end
-        end
-        if not best then
-            print("Skynet UI: native name cache found no match ("
-                .. calls .. " fragments checked)")
-            return
-        end
-
-        local updated = draft:sub(1, start_at - 1) .. best
-        if updated == draft then
-            print("Skynet UI: Tab completion already matches cached name")
-            return
-        end
-        -- On this client GetElementById returns a generic Element; .value is
-        -- nil even while typing. The supported generic setter is SetAttribute.
-        -- Verify visually that it changes the live text, not only the attribute.
-        local ok, err = pcall(function()
-            input:SetAttribute("value", updated)
-        end)
-        if not ok then
-            print("Skynet UI: RmlUi input value write failed: " .. tostring(err))
-            return
-        end
-        self.chat_draft = updated
-        local attr_ok, attr_value = pcall(function()
-            return input:GetAttribute("value")
-        end)
-        print("Skynet UI: native Tab completion applied; old length="
-            .. #draft .. " new length=" .. #updated
-            .. " attribute_readback=" .. tostring(attr_ok and attr_value == updated))
-        -- GetElementById returns a generic RmlUi Element. Its Lua binding
-        -- lacks the SetSelection method needed to move the text caret.
-        -- Process the native End key *after* the Tab callback returns instead.
-        -- This uses RmlUi's normal text-editing behavior to move the caret.
-        caret_timer:SetTimeout(1, function()
-            if not self.chat_input_open or self.chat_draft ~= updated then return end
-            local ctx = self.context
-            if not ctx or type(ctx.ProcessKeyDown) ~= "function" then
-                print("Skynet UI: RmlUi Context:ProcessKeyDown unavailable")
-                return
-            end
-            local focused, focus_err = pcall(function() input:Focus() end)
-            if not focused then
-                print("Skynet UI: cannot refocus input after Tab: "
-                    .. tostring(focus_err))
-                return
-            end
-            local ok_end, end_err = pcall(function()
-                ctx:ProcessKeyDown(end_key, 0)
-                ctx:ProcessKeyUp(end_key, 0)
-            end)
-            print("Skynet UI: caret-to-end via KI_END "
-                .. (ok_end and "dispatched" or ("failed: " .. tostring(end_err))))
-        end)
-    end
-
-    local function on_key(event, phase)
-        if not self.chat_input_open then return end
-        local p = event and event.parameters
-        local key = p and p.key_identifier
-        trace(phase, key or "nil")
-        if key == tab then
-            stop(event)
-            if phase == "keydown" then complete_name() end
-        elseif key == esc then
-            stop(event)
-            print("Skynet UI: RmlUi Escape received (" .. phase .. ")")
-            self:cancel_chat("escape-" .. phase)
-        elseif key == enter or key == num_enter then
-            stop(event)
-            print("Skynet UI: RmlUi Enter received (" .. phase .. ")")
-            self:submit_chat("enter-" .. phase)
-        end
-    end
-
-    local ok_form, form_err = pcall(function()
-        form:AddEventListener("submit", function(event)
-            trace("form-submit")
-            stop(event)
-            -- The form submit event provides named input values directly.
-            local params = event and event.parameters
-            local message = params and params.message
-            if self.chat_diagnostics then
-                print("Skynet RmlUi input: submit message type=" .. type(message)
-                    .. (type(message) == "string" and (" length=" .. #message) or ""))
-            end
-            self:submit_chat("form-submit", message)
-        end, false)
-    end)
-
-    local ok_key, key_err = pcall(function()
-        input:AddEventListener("keydown", function(event)
-            on_key(event, "keydown")
-        end, false)
-        -- Keyup is a fallback for clients that lose the keydown identifier.
-        input:AddEventListener("keyup", function(event)
-            on_key(event, "keyup")
-        end, false)
-    end)
-
-    self.chat_listeners_bound = ok_form and ok_key
-    if not self.chat_listeners_bound then
-        print("Skynet UI: chat listeners failed: form="
-            .. tostring(form_err) .. " key=" .. tostring(key_err))
-    end
-    return self.chat_listeners_bound
+    self.chat_entry = entry
+    self.chat_listeners_bound = true
+    return true
 end
 
 function UI:begin_chat()
-    if not self.visible or not self.chat_listeners_bound then return false end
-    local form, input = self:node("chat-form"), self:node("chat-input")
-    if not form or not input then return false end
-    if self.chat_input_open then
-        print("Skynet UI: begin_chat called while chat is already open")
-        return true
-    end
+    if not self.visible or not self.chat_listeners_bound
+        or not self.chat_entry then return false end
+    local form = self:node("chat-form")
+    if not form then return false end
+    if self.chat_input_open then return true end
+
     self.chat_input_open = true
     self.chat_draft = ""
-    self.chat_diagnostic_events = 0
     form.style.display = "block"
-    -- Clear the actual RmlUi form control, not the inaccessible .value
-    -- Lua property on the generic Element returned by GetElementById().
-    local cleared, clear_err = pcall(function() input:SetAttribute("value", "") end)
-    if not cleared then
-        print("Skynet UI: failed to reset chat attribute on open: " .. tostring(clear_err))
+
+    local opened, open_err = self.chat_entry:open()
+    if not opened then
+        print("Skynet UI: cannot prepare text input: " .. tostring(open_err))
+        self:cancel_chat("failed-open")
+        return false
     end
     if not self:notify_chat_focus(true) then
         self:cancel_chat("failed-handoff")
         return false
     end
-    local focused, focus_err = pcall(function() input:Focus() end)
+    local focused, focus_err = self.chat_entry:focus()
     if not focused then
         print("Skynet UI: cannot focus RmlUi chat input: " .. tostring(focus_err))
         self:cancel_chat("failed-focus")
         return false
     end
-    if self.chat_diagnostics then
-        print("Skynet RmlUi input: Focus() called; draft length="
-            .. #self.chat_draft
-            .. "; Element.value type=" .. type(input.value))
-    end
     return true
 end
 
 function UI:cancel_chat(reason)
-    if not self.chat_input_open then
-        if self.chat_diagnostics then
-            print("Skynet UI: cancel_chat ignored; input already closed ("
-                .. tostring(reason) .. ")")
-        end
-        return
-    end
+    if not self.chat_input_open then return end
     self.chat_input_open = false
     self.chat_draft = ""
     print("Skynet UI: closing RmlUi chat: " .. tostring(reason or "cancel"))
-    local form, input = self:node("chat-form"), self:node("chat-input")
-    if input then
-        local cleared, clear_err = pcall(function() input:SetAttribute("value", "") end)
-        if not cleared then
-            print("Skynet UI: failed to reset chat attribute on close: " .. tostring(clear_err))
-        end
-        local blurred, blur_err = pcall(function() input:Blur() end)
-        if not blurred then
-            print("Skynet UI: cannot blur chat input: " .. tostring(blur_err))
-        end
-    end
+    if self.chat_entry then self.chat_entry:close() end
+    local form = self:node("chat-form")
     if form then form.style.display = "none" end
-    -- Always restore the IUP HUD and flight controls, including after errors.
+    -- Always restore native HUD interaction, even when focus failed to open.
     self:notify_chat_focus(false)
 end
 
