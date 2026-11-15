@@ -124,13 +124,16 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     /* One visual separator, with an 8px drag hit area. */
     background-color: transparent;
     border-width: 0px;
-    /* Layout mode turns on this single separator line. Keep the 8px
-       draggable region and the three column widths unchanged. */
-    border-left-width: 0px;
-    border-color: #386984;
+    /* A very faint line stays in flight mode; the 8px drag target and
+       column geometry are unchanged. ui.lua strengthens it in edit mode. */
+    border-left-width: 1px;
+    border-color: rgba(56, 105, 132, 0.24);
     drag: drag;
 }
-.splitter:hover { background-color: rgba(64, 138, 170, 0.80); }
+.splitter:hover { background-color: transparent; }
+#skynet-panel.layout-edit .splitter:hover {
+    background-color: rgba(64, 138, 170, 0.80);
+}
 #resize-grip {
     position: absolute;
     display: none; /* Only shown while /skynetui layout is active. */
@@ -178,24 +181,40 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-color: #a0dfff;
 }
 
-/* RmlUi does not style generated scrollbar elements by default. */
+/* Keep RmlUi scrollbars generated and their 11px width intact, so
+   overflow, scrolling and word wrapping never change between modes.
+   Only their paint is hidden during normal flight. */
 scrollbarvertical {
     width: 11px;
-    background-color: #122d40;
+    background-color: transparent;
 }
 scrollbarvertical slidertrack {
     width: 11px;
-    background-color: #1c455d;
+    background-color: transparent;
 }
 scrollbarvertical sliderbar {
     width: 9px;
     min-height: 18px;
-    background-color: #71b5d6;
+    background-color: transparent;
 }
-scrollbarvertical sliderbar:hover { background-color: #a1d9f0; }
+scrollbarvertical sliderbar:hover { background-color: transparent; }
 scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
     width: 0px;
     height: 0px;
+}
+/* RmlUi generates scrollbars as children of their scroll containers.
+   ui.lua toggles this parent class for layout mode. */
+#skynet-panel.layout-edit scrollbarvertical {
+    background-color: #122d40;
+}
+#skynet-panel.layout-edit scrollbarvertical slidertrack {
+    background-color: #1c455d;
+}
+#skynet-panel.layout-edit scrollbarvertical sliderbar {
+    background-color: #71b5d6;
+}
+#skynet-panel.layout-edit scrollbarvertical sliderbar:hover {
+    background-color: #a1d9f0;
 }
 </style>
 </head>
