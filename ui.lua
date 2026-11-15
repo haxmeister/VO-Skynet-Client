@@ -71,6 +71,10 @@ function UI.new(options)
     self.chat_follow_bottom = true
     self.chat_scroll_pending = false
     self.chat_scroll_applying = false
+    -- RmlUi sends "scroll" events for programmatic scroll and relayout too.
+    -- Only genuine mouse input may disable following new chat messages.
+    self.chat_scroll_user_input = false
+    self.chat_scroll_mouse_down = false
     self.chat_scroll_timer = options.chat_scroll_timer
     self.load_geometry = options.load_geometry
     self.save_geometry = options.save_geometry
@@ -256,6 +260,10 @@ function UI:layout()
     if done then
         done.style.display = self.layout_editing and "block" or "none"
     end
+    local grip = self:node("resize-grip")
+    if grip then
+        grip.style.display = self.layout_editing and "block" or "none"
+    end
     if self.layout_last_viewport_width ~= self:viewport() then
         -- Only log changes when the viewport width changes; not every drag.
         print("Skynet UI: panel geometry " .. math.floor(g.width)
@@ -438,6 +446,8 @@ function UI:unmount()
     self.chat_listeners_bound = false
     self.chat_entry = nil
     self.chat_scroll_pending = false
+    self.chat_scroll_user_input = false
+    self.chat_scroll_mouse_down = false
     if self.chat_scroll_timer then
         pcall(function() self.chat_scroll_timer:Kill() end)
     end
@@ -450,6 +460,7 @@ function UI:show()
     if self.visible then return end
     self.visible = true
     if self.document then self.document:Show() end
+    if self.chat_follow_bottom then self:schedule_chat_follow() end
 end
 
 function UI:hide()
@@ -644,13 +655,36 @@ function UI:replace_online(names)
     self:render_online()
 end
 
-function UI:add_chat(name, message)
-    if type(name) ~= "string" or type(message) ~= "string" then return end
-    self.chat[#self.chat + 1] = { name = name, message = message }
+-- Add a batch with one RmlUi rebuild. Rebuilding the whole chat DOM for
+-- every message in a 40-message flood can trigger scroll/layout events
+-- between inserts and falsely make a followed feed appear manually scrolled.
+function UI:add_chat_batch(entries)
+    if type(entries) ~= "table" then return end
+    local dirty = false
+    for _, entry in ipairs(entries) do
+        local name, message = entry.name, entry.message
+        if type(name) == "string" and type(message) == "string" then
+            self.chat[#self.chat + 1] = { name = name, message = message }
+            dirty = true
+        end
+    end
+    if not dirty then return end
     while #self.chat > self.settings.chat_limit do
         table.remove(self.chat, 1)
     end
     self:render_chat()
+end
+
+function UI:add_chat(name, message)
+    if type(name) ~= "string" or type(message) ~= "string" then return end
+    self:add_chat_batch({{name = name, message = message}})
+end
+
+-- This is useful for explicitly requested jump-to-live actions, including
+-- /skynetui demo flood. Ordinary incoming messages respect manual scroll-up.
+function UI:follow_chat()
+    self.chat_follow_bottom = true
+    self:schedule_chat_follow()
 end
 
 function UI:add_sighting(name, ship_type, sector, seen_at)
@@ -764,8 +798,25 @@ function UI:bind_chat_scroll()
     local node = self:node("chat-list")
     if not node then return false end
     local ok, err = pcall(function()
+        -- RmlUi emits scroll for *both* real user scrolling and a DOM
+        -- replacement changing the scroll range. Wheel / mouse interaction
+        -- identifies the intentional kind of scroll.
+        node:AddEventListener("mousescroll", function()
+            self.chat_scroll_user_input = true
+        end, false)
+        node:AddEventListener("mousedown", function()
+            self.chat_scroll_mouse_down = true
+        end, false)
+        node:AddEventListener("mouseup", function()
+            self.chat_scroll_mouse_down = false
+        end, false)
         node:AddEventListener("scroll", function()
-            if self.chat_scroll_applying or self.chat_scroll_pending then return end
+            if self.chat_scroll_applying then return end
+            if not self.chat_scroll_user_input
+                and not self.chat_scroll_mouse_down then
+                return -- layout scroll, not user input
+            end
+            self.chat_scroll_user_input = false
             local top = tonumber(node.scroll_top) or 0
             local visible = tonumber(node.client_height) or 0
             local extent = tonumber(node.scroll_height) or 0
@@ -789,12 +840,12 @@ function UI:render_chat()
             .. label(entry.name .. ":", self:color_of(self.player_alliances[entry.name]), "pilot")
             .. ' ' .. escape(entry.message) .. '</div>'
     end
-    node.inner_rml = table.concat(output)
     if self.chat_follow_bottom then
-        -- Immediate best effort followed by a layout-aware deferred attempt.
-        self:scroll_chat_to_bottom()
+        -- Arm the pending follow BEFORE replacing the DOM, since a relayout
+        -- can generate a "scroll" event synchronously during inner_rml.
         self:schedule_chat_follow()
     end
+    node.inner_rml = table.concat(output)
 end
 
 function UI:render_sightings()
