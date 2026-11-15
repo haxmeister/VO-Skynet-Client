@@ -140,8 +140,6 @@ local COLUMN_PADDING = 4
 local SECTION_PADDING = 6
 local INPUT_HEIGHT = 29
 local SPLITTER_WIDTH = 8
--- Section side padding 5px each and reserved chat scrollbar width 11px.
-local CHAT_FADE_SIDE_AND_SCROLLBAR = 21
 local HORIZONTAL_PADDING = 8 -- border + inner columns padding
 local MIN_CHAT_WIDTH = 160
 local MIN_ONLINE_WIDTH = 95
@@ -341,12 +339,8 @@ function UI:layout()
         if node then node.style.height = px(common_list_height) end
     end
     local list = self:node("chat-list")
-    if list then list.style.height = px(chat_list_height) end
-    local fade = self:node("chat-top-fade")
-    if fade then
-        -- Overlay only the text viewport; don't cover the scrollbar track.
-        fade.style.width = px(math.max(1,
-            g.chat - CHAT_FADE_SIDE_AND_SCROLLBAR))
+    if list then
+        list.style.height = px(chat_list_height)
         self:update_chat_fade()
     end
 
@@ -548,6 +542,7 @@ function UI:unmount()
     end
     self.chat_follow_bottom = true
     self.chat_scroll_bound = false
+    self.chat_fade_applied = nil
     self.sighting_fade_active = false
     if self.sighting_fade_timer then
         pcall(function() self.sighting_fade_timer:Kill() end)
@@ -967,21 +962,31 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
--- Blend old messages into the background as they exit at the top of chat.
--- Hide the gradient when scrolled right to the beginning so the oldest
--- visible message stays readable. Keep all scrolling events on chat-list.
+-- Fade old chat text by masking the scrollable element's own pixels.
+-- The previous navy-gradient overlay painted a hard-edged rectangle when
+-- the column background became transparent at its top. An RCSS mask
+-- does not paint any background. It is harmless if VO lacks mask support.
+-- Only enable it while scrolled away from the beginning of history.
 function UI:update_chat_fade()
-    local fade = self:node("chat-top-fade")
     local list = self:node("chat-list")
-    if not fade or not list then return end
+    if not list then return end
     local top = tonumber(list.scroll_top) or 0
     local client = tonumber(list.client_height) or 0
     local extent = tonumber(list.scroll_height) or 0
-    local display = (top > 0.5 and extent > client + 1)
-        and "block" or "none"
-    if fade.style.display ~= display then
-        fade.style.display = display
+    local active = top > 0.5 and extent > client + 1
+    if self.chat_fade_applied == active then return end
+    local ok = pcall(function()
+        list:SetClass("chat-faded", active)
+    end)
+    if not ok then
+        -- Keep the existing scroller class for older VO bindings without
+        -- SetClass; otherwise overflow and scrollbar behavior could change.
+        ok = pcall(function()
+            list:SetAttribute("class",
+                active and "scroller chat-faded" or "scroller")
+        end)
     end
+    if ok then self.chat_fade_applied = active end
 end
 
 -- RmlUi may report the previous scroll range immediately after inner_rml.
