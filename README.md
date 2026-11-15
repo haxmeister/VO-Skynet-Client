@@ -59,6 +59,16 @@ Both test modes revert to VO's native prompt on the next interface load. Enter/E
 
 This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
+### Native player-name Tab completion experiment
+
+This branch also tests **VO's existing `TabCompleteName(string)` cache** in the inline RmlUi input. It does not build a second player-name list, and it does not modify the game's RLB files.
+
+Use `/skynetui input active`, press **Shift+A**, type the beginning of a player name that the client has already encountered, and press **Tab**. For a name after message text, try something such as `hello Dra` when a player with that prefix is known to the client. Tab should complete the name without submitting or losing focus. **Enter** still locally echoes the message, and **Escape** still cancels.
+
+The Lua listener intercepts `KI_TAB` and tries suffixes of the current draft, longest first, with `TabCompleteName()`. On a match, it writes the new text through `input:SetAttribute("value", ...)`, updates the Lua draft, and attempts to place the caret at the end. This is intentionally a first-pass test for completion **at the end of the text**; arbitrary caret-position edits and cycling through multiple native matches are not yet implemented.
+
+**Report whether the completed name visibly appears, whether you can continue typing after it, and whether Enter echoes the completed message.** The errors log will show `native Tab completion applied`, `native name cache found no match`, or a native/RmlUi method error. `attribute_readback=true` only checks the attribute; it does **not** prove the rendered/live input value changed. The active-HUD focus behavior and its 12-second emergency restore are unchanged.
+
 ### ACTIVE attribute experiment (separate feature branch)
 The `feature/rmlui-hud-active-test` branch adds a third opt-in mode for the same validated RmlUi form:
 
