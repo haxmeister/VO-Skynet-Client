@@ -63,127 +63,46 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
--- VO's IUP dialogs handle keyboard focus in flight. The failed
--- Game.SetInputMode(0) experiment was removed; native dialogs should
--- restore flight controls through VO's own ShowDialog/HideDialog logic.
-local native_chat_open = false
-local native_chat_dialog = nil
-local native_chat_input = nil
-local native_chat_opened_at = nil
+-- Original Skynet/skynet2 used VO's built-in chat prompt instead of an
+-- IUP dialog. This lets VO handle typing, Enter, Escape, and flight focus.
+-- Keep the colored command name EXACTLY in sync with the prompt alias.
+local prompt_command = "\12737c8abSkynet:"
+local prompt_alias = "skynetui_prompt"
+RegisterUserCommand(prompt_command, function(_, words)
+    if type(words) ~= "table" then return end
+    ui:deliver_chat(table.concat(words, " "))
+end)
 
-local function close_native_chat(submit)
-    if not native_chat_open then return end
-    local message = native_chat_input and tostring(native_chat_input.value or "") or ""
-    native_chat_open = false
-    native_chat_opened_at = nil
-    if native_chat_dialog then
-        local ok_hide, hide_err = pcall(HideDialog, native_chat_dialog)
-        if not ok_hide then
-            print("Skynet UI: HideDialog failed: " .. tostring(hide_err))
-        end
-        -- Guard against an IUP dialog remaining mapped when the wrapper fails.
-        if not ok_hide or native_chat_dialog.visible == "YES" then
-            local ok_fallback, fallback_err = pcall(function()
-                native_chat_dialog:hide()
-            end)
-            if not ok_fallback then
-                print("Skynet UI: direct dialog hide failed: " .. tostring(fallback_err))
-            end
-        end
+local prompt_ready = false
+if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
+    local command = "alias " .. prompt_alias .. " 'prompt " .. prompt_command .. " '"
+    local ok_alias, alias_err = pcall(gkinterface.GKProcessCommand, command)
+    prompt_ready = ok_alias
+    if not ok_alias then
+        print("Skynet UI: cannot register VO chat prompt alias: " .. tostring(alias_err))
     end
-    if submit then
-        message = message:match("^%s*(.-)%s*$")
-        if message ~= "" then
-            ui:add_chat("LOCAL TEST", message) -- never sends to VO chat
-        end
-    end
+else
+    print("Skynet UI: gkinterface.GKProcessCommand is unavailable")
 end
 
-local function open_native_chat()
-    if type(iup) ~= "table" and type(iup) ~= "userdata" then
-        print("Skynet UI: IUP is unavailable")
-        return false
+local function open_chat_prompt()
+    if not prompt_ready then
+        print("Skynet UI: native chat prompt is unavailable")
+        return
     end
-    if type(ShowDialog) ~= "function" or type(HideDialog) ~= "function" then
-        print("Skynet UI: ShowDialog/HideDialog unavailable")
-        return false
+    local ok_prompt, prompt_err = pcall(gkinterface.GKProcessCommand, prompt_alias)
+    if not ok_prompt then
+        print("Skynet UI: cannot open chat prompt: " .. tostring(prompt_err))
     end
-    if not native_chat_dialog then
-        local input = iup.text {
-            value = "",
-            size = "340x",
-            expand = "HORIZONTAL",
-        }
-        local send_button = iup.button { title = "Send", size = "64x" }
-        local cancel_button = iup.button { title = "Cancel", size = "64x" }
-        local dialog = iup.dialog {
-            iup.vbox {
-                iup.label { title = "Skynet alliance chat (auto-cancels after 2 minutes)" },
-                input,
-                iup.hbox {
-                    iup.fill {},
-                    send_button,
-                    cancel_button,
-                    gap = "6",
-                },
-                margin = "8x8",
-                gap = "5",
-            },
-            title = "Skynet chat",
-            resize = "NO",
-            maxbox = "NO",
-            minbox = "NO",
-            -- IUP reserves Enter/Escape for DEFAULTENTER/DEFAULTESC.
-            -- These attributes refer directly to the buttons.
-            defaultenter = send_button,
-            defaultesc = cancel_button,
-        }
-        function send_button:action()
-            close_native_chat(true)
-            return iup.DEFAULT
-        end
-        function cancel_button:action()
-            close_native_chat(false)
-            return iup.DEFAULT
-        end
-        function dialog:close_cb()
-            close_native_chat(false)
-            return iup.IGNORE
-        end
-        native_chat_input = input
-        native_chat_dialog = dialog
-    end
-    native_chat_input.value = ""
-    local shown, show_err = pcall(ShowDialog, native_chat_dialog, iup.CENTER, iup.CENTER)
-    if not shown then
-        print("Skynet UI: cannot open native chat dialog: " .. tostring(show_err))
-        return false
-    end
-    native_chat_open = true
-    native_chat_opened_at = os.time()
-    if type(iup.SetFocus) == "function" then
-        local focused, focus_err = pcall(iup.SetFocus, native_chat_input)
-        if not focused then
-            print("Skynet UI: cannot focus native chat input: " .. tostring(focus_err))
-        end
-    end
-    return true
 end
 
 -- Bootstrapping from getters also handles ReloadInterface() while flying.
 local ship_hud_visible = is_flying()
 
 local function sync_visibility()
-    local flying = is_flying()
-    if not user_wants_visible or not flying then
-        -- A real dock/logout or user hide must close the text entry.
-        close_native_chat(false)
-        ui:hide()
-    elseif ship_hud_visible then
+    if user_wants_visible and ship_hud_visible and is_flying() then
         ui:show()
     else
-        -- Some native dialogs may hide the ship HUD temporarily.
-        -- Do not close our own dialog just because HUD_HIDE fired.
         ui:hide()
     end
 end
@@ -227,27 +146,15 @@ local ticker = Timer()
 local function refresh()
     ui:tick()
     sync_visibility()
-    -- Last-resort safety escape if the native IUP callbacks are broken too.
-    if native_chat_open and native_chat_opened_at
-        and os.time() - native_chat_opened_at >= 120 then
-        print("Skynet UI: native chat safety timeout; canceling input")
-        close_native_chat(false)
-    end
     ticker:SetTimeout(1000, refresh)
 end
 ticker:SetTimeout(1000, refresh)
 
--- Do not bind a key automatically: the player should choose a free key.
-local function toggle_chat()
-    -- The native dialog may hide the ship HUD, so close it BEFORE
-    -- checking the HUD's visibility. Otherwise the hotkey cannot rescue it.
-    if native_chat_open then
-        close_native_chat(false)
-        return
-    end
+-- Do not bind a key automatically: preserve the user's skynetui_chat bind.
+local function activate_chat()
     sync_visibility()
     if not ui.visible then return end
-    open_native_chat()
+    open_chat_prompt()
 end
 
 -- /skynetui hide|show|demo|chat
@@ -260,10 +167,7 @@ RegisterUserCommand("skynetui", function(_, args)
         ui:add_chat("Raven", "New demo message.")
         ui:add_sighting("Drake", "Vult", "Odia M-14")
     elseif command == "chat" then
-        toggle_chat()
-        return
-    elseif command == "close" then
-        close_native_chat(false)
+        activate_chat()
         return
     else
         user_wants_visible = true
@@ -273,11 +177,7 @@ end)
 
 -- VO's /bind can target this command: /bind F8 skynetui_chat
 RegisterUserCommand("skynetui_chat", function()
-    toggle_chat()
-end)
--- An independent escape hatch even if VO hides the ship HUD for the dialog.
-RegisterUserCommand("skynetui_close", function()
-    close_native_chat(false)
+    activate_chat()
 end)
 
-print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat|close")
+print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat (native VO prompt)")
