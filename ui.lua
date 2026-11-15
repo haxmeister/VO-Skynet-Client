@@ -1004,8 +1004,9 @@ end
 
 function UI:render_sightings()
     local items, now = {}, self.clock()
+    local ttl = math.max(1, tonumber(self.settings.sighting_ttl) or 60)
     for _, sighting in pairs(self.sightings) do
-        if now - sighting.seen_at < self.settings.sighting_ttl then
+        if now - sighting.seen_at < ttl then
             items[#items + 1] = sighting
         end
     end
@@ -1016,7 +1017,12 @@ function UI:render_sightings()
     local output = {}
     for _, s in ipairs(items) do
         local age = math.max(0, math.floor(now - s.seen_at))
-        output[#output + 1] = '<div class="sighting-row">'
+        -- RmlUi's opacity is 0..1 (unlike rgba alpha, which is 0..255).
+        -- Fade the entire row, including any colored pilot/sector spans,
+        -- smoothly from fully legible to 12% just before it expires.
+        local opacity = math.max(0.12, 1 - (age / ttl) * 0.88)
+        output[#output + 1] = '<div class="sighting-row" style="opacity: '
+            .. string.format("%.2f", opacity) .. ';">'
             .. label(s.name, self:color_of(self.player_alliances[s.name]), "sighting-pilot")
             .. '<span class="sighting-ship">' .. escape(s.ship_type) .. '</span>'
             .. label(s.sector, self:color_of(self.sector_owners[s.sector]), "sighting-sector")
