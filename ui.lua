@@ -136,7 +136,8 @@ end
 -- keep RmlUi's flex children from letting chat overflow the panel bottom.
 local HEADER_HEIGHT = 25
 local COLUMN_PADDING = 4
-local SECTION_PADDING = 6
+-- 8px top + 3px bottom; reserve this space in each list height.
+local SECTION_PADDING = 11
 local INPUT_HEIGHT = 29
 local SPLITTER_WIDTH = 8
 local HORIZONTAL_PADDING = 8 -- border + inner columns padding
@@ -316,12 +317,12 @@ function UI:layout()
         end
         local guide = self:node(id .. "-guide")
         if guide then
-            -- With column titles removed, the single-pixel guide fills
-            -- the entire drag gutter and never shortens its hit target.
+            -- The 1px guide remains full height. Its 12px faded ends and
+            -- solid center (including edit-mode colors) are defined in
+            -- panel.rml rather than painting a solid line over the fades.
+            -- The containing 8px splitter remains the same drag target.
             guide.style["margin-top"] = "0px"
             guide.style.height = px(section_height)
-            guide.style["background-color"] =
-                editing and "#75a9c8" or "#4c7188"
         end
     end
 
