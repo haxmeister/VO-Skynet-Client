@@ -65,6 +65,8 @@ Panel dimensions and divider widths are constrained to remain on-screen when pos
 
 The chat list now has an explicit pixel height separate from the fixed 29px input row, with `overflow-y: scroll`. Its vertical scrollbar is explicitly styled because RmlUi provides no built-in scrollbar appearance. The scroll area shrinks when Shift+A opens the input, then grows back when input closes. The rest of the panel is clipped so text cannot paint past the bottom of the window.
 
+**Follow-up fixes:** Each movable column separator now draws one line, not two border lines. New messages follow the bottom of the chat history **after** RmlUi recalculates its scroll height; a 40ms deferred scroll prevents the original premature-scroll bug during `/skynetui demo flood`. Repeated messages coalesce into one pending timer. A user who manually scrolls upward stays at the chosen position; returning to the bottom re-enables following.
+
 **Mouse interactions require layout-edit mode or another active RmlUi input owner.** This is necessary because the normal IUP flight HUD intercepts mouse input. Use `/skynetui layout` to drag the window and scrollbar; no RLB modification is required.
 
 The default chat watchdog is **12 seconds** and is configured by `CHAT_RECOVERY_TIMEOUT_MS` in `main.lua`. Set it to `0` to disable the automatic recovery for long-form inputs. On timeout or HUD shutdown, the router closes the field, restores the original IUP `ACTIVE` state, and re-enables flight input. In case of a serious input fault, use `ReloadInterface()`.
