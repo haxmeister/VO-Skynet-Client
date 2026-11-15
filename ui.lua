@@ -81,6 +81,7 @@ function UI.new(options)
     self.save_geometry = options.save_geometry
     self.on_layout_focus = options.on_layout_focus
     self.layout_editing = false
+    self.layout_chrome_applied = nil
     self.layout_controls_bound = false
     self.geometry = nil
     self.drag_state = nil
@@ -224,6 +225,28 @@ function UI:layout()
     -- transparent, so don't reduce contrast further than necessary.
     -- RmlUi's style proxy uses RCSS property names for hyphenated keys.
     local editing = self.layout_editing
+    if self.layout_chrome_applied ~= editing then
+        -- The parent class selectively paints RmlUi's generated scrollbar
+        -- elements, without disabling their scroll behavior or changing
+        -- the width reserved for the bars. Class changes happen only on
+        -- mode transitions, not during the normal one-second UI refresh.
+        local ok, err = pcall(function()
+            panel:SetClass("layout-edit", editing)
+        end)
+        if not ok then
+            -- Older embedded builds may not expose SetClass, but we know
+            -- SetAttribute is present in the VO RmlUi Lua binding.
+            ok, err = pcall(function()
+                panel:SetAttribute("class", editing and "layout-edit" or "")
+            end)
+        end
+        if ok then
+            self.layout_chrome_applied = editing
+        else
+            print("Skynet UI: cannot toggle layout scrollbar style: "
+                .. tostring(err))
+        end
+    end
     local header = self:node("skynet-header")
     if header then header.style.display = editing and "flex" or "none" end
     panel.style["background-color"] = editing
@@ -266,9 +289,12 @@ function UI:layout()
         local node = self:node(id)
         if node then
             node.style.height = px(section_height)
-            -- Preserve the divider's 8px hit target without drawing a line
-            -- until the user explicitly enters layout-edit mode.
-            node.style["border-left-width"] = editing and "1px" or "0px"
+            -- Leave one very faint vertical guide during flight, and make
+            -- it prominent for dragging in layout-edit mode. Width stays
+            -- fixed so changing modes doesn't disturb column geometry.
+            node.style["border-left-width"] = "1px"
+            node.style["border-color"] = editing
+                and "#386984" or "rgba(56, 105, 132, 0.24)"
             node.style["background-color"] = editing
                 and "rgba(23, 62, 83, 0.25)" or "transparent"
         end
@@ -479,6 +505,7 @@ function UI:unmount()
     end
     self.chat_follow_bottom = true
     self.chat_scroll_bound = false
+    self.layout_chrome_applied = nil
     self.layout_controls_bound = false
 end
 
