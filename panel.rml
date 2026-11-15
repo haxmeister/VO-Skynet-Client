@@ -102,6 +102,8 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     white-space: normal;
 }
 .chat-row { display: block; margin-bottom: 3px; white-space: normal; word-break: break-word; }
+/* Last child of the scroll container, targeted by ScrollIntoView(false). */
+.chat-tail { display: block; height: 1px; min-height: 1px; width: 100%; }
 #sightings-panel { width: 150px; }
 #sightings-list { white-space: nowrap; }
 .sighting-row { display: flex; margin-bottom: 3px; }
