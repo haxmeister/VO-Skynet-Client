@@ -4,7 +4,7 @@
 <style>
 /* VO RmlUi has no default HTML/scrollbar styles. All dimensions are explicit.
    CRITICAL: RmlUi RGBA alpha is 0..255, not the browser's 0..1!
-   rgba(7, 20, 36, 170) is roughly 67% opaque, whereas 0.92 is invisible. */
+   rgba(7, 20, 36, 166) is roughly 65% opaque (35% transparent). */
 div, form { display: block; }
 body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color: #e4ecf6; }
 #skynet-panel {
@@ -58,7 +58,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     height: 24px;
     padding: 3px 9px;
-    background-color: rgba(7, 20, 36, 170);
+    background-color: rgba(7, 20, 36, 166);
     border-radius: 5px 0px 0px 0px;
 }
 #skynet-tab-angle {
@@ -72,7 +72,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     display: block;
     height: 6px;
     min-height: 6px;
-    background-color: rgba(7, 20, 36, 170);
+    background-color: rgba(7, 20, 36, 166);
 }
 #tab-angle-1 { width: 4px; }
 #tab-angle-2 { width: 8px; }
@@ -108,7 +108,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
        Align the tab directly to the row; retain geometry/scrolling padding. */
     padding: 0px 3px 4px;
     min-height: 0;
-    background-color: rgba(7, 20, 36, 170);
+    background-color: rgba(7, 20, 36, 166);
 }
 .section {
     display: flex;
@@ -143,7 +143,8 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 #chat-top-fade {
     display: none;
     position: absolute;
-    top: 3px;
+    /* Shift the soft vanishing band down slightly from the top edge. */
+    top: 11px;
     left: 5px;
     height: 26px;
     /* ui.lua gives this an exact width, stopping before the scrollbar. */
