@@ -21,21 +21,21 @@ Copy the contents of this repository into a folder named `skynetui` under VO's `
 
 Use `/skynetui hide`, `/skynetui show`, or `/skynetui demo` in the VO console. The demo command adds a sample chat message and refreshes a sighting.
 
-### Chat entry — native IUP focus test (November 14, 2026)
+### Chat entry — original Skynet-style VO prompt
 
-A real VO flight test showed that the RmlUi inline input had a blinking caret, but all keystrokes still controlled the ship. An attempted `Game.SetInputMode(0)` switch **did not fix this**: the game still handled all keys and RmlUi received no characters. That unverified input-mode experiment and its 20-second timer were removed.
+The original clients at [skynet-client](https://github.com/haxmeister/skynet-client/blob/main/notifier.lua) and [skynet2-client](https://github.com/haxmeister/skynet2-client/blob/main/chat.lua) used Vendetta Online's own `prompt` command for alliance chat. They registered a color-coded command with `RegisterUserCommand`, created a `gkinterface.GKProcessCommand` alias to `prompt`, and bound a hotkey. The prompt invokes the registered command with words as a Lua array, which the handler joins into a message.
 
-The same `/skynetui chat` command, or an existing bind like:
+We use that proven original design again, **not** the separate IUP dialog or the currently non-functional inline RmlUi input. VO's built-in prompt should provide its normal text focus, Enter and Escape handling.
+
+Use `/skynetui chat` or the dedicated command `skynetui_chat`; keep your existing key binding or choose one yourself:
 
 ```text
 /bind F8 skynetui_chat
 ```
 
-now opens a small **native IUP text dialog**. The initial field accepted typing but did not respond to Enter or Escape, leaving the dialog stuck. Its IUP `k_any` handler was insufficient; the current code sets `defaultenter` and `defaultesc` on real **Send**/**Cancel** buttons, following IUP's documented convention. Buttons also provide mouse-accessible exits. Enter adds a `LOCAL TEST: ...` message to Skynet's RmlUi chat history, and Escape cancels. Docking or hiding Skynet should also close the dialog. **Nothing is sent to VO chat or a network server.**
+No key is bound automatically. The plugin registers an internal `skynetui_prompt` alias that runs `prompt`. The command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
 
-No key is rebound automatically. Testing while stationary in a safe sector is recommended. Verify Enter/Escape, clicking **Send**/**Cancel**, and flight control restoration. If either key fails, click Cancel or press the chat hotkey again to dismiss the dialog. An additional `/skynetui close` or `/skynetui_close` command can dismiss it without submitting anything, including when the native dialog hides the Skynet HUD. As a last resort, an open test dialog now automatically cancels after **120 seconds**, even if its keyboard callbacks fail. If a previous plugin version has trapped focus so the console cannot be reached, the VO console command `/lua ReloadInterface()` (when available) or a client restart is needed to load the new code. Please include the errors log for any further failure.
-
-**Long-term UI goal remains the compact inline RmlUi input.** We are leaving its hidden form and controller methods in place until we understand how VO forwards keyboard events from its flight HUD to the RmlUi context. The IUP dialog is a fallback, not a claim that RmlUi input now works in flight.
+This is based on code from the older working Skynet clients, but the updated implementation still needs a current-client test: activate the hotkey, type a message, submit with Enter, cancel a second prompt with Escape, and verify flight controls resume normally. The non-working RmlUi input remains hidden for possible future use; VO's native `prompt` owns text entry.
 
 ### Flight-only visibility
 
@@ -98,7 +98,7 @@ Network plugins will eventually translate **custom VO events** into these calls.
 ### Next milestones
 
 1. Verify panel visibility, sizing, text rendering and scroll behavior in the VO client.
-2. Validate native IUP chat-entry focus, Enter/Escape, and flight-control restoration; investigate a future inline RmlUi input once VO's keyboard routing is understood.
+2. Verify original Skynet-style native VO prompt integration and local message submission, then investigate inline RmlUi input if desired.
 3. Define and consume custom VO events for chat, roster, sightings, colors, ownership and connection state.
 4. Replace provisional radar margins with bounds that accurately fit between both radar widgets.
 
@@ -108,4 +108,4 @@ Network plugins will eventually translate **custom VO events** into these calls.
 - Styling is embedded in `panel.rml` to avoid the reported RmlUi external stylesheet cache issue during rapid iteration.
 - The demo's green CONNECTED text is simulated; it does not indicate an active server.
 - User text is HTML-escaped before being placed into the RmlUi document.
-- An inline RmlUi chat form exists but does not receive flight-mode keyboard input in the tested VO client. The native IUP fallback is currently used for entry.
+- An inline RmlUi chat form exists but does not receive flight-mode keyboard input in the tested VO client. The native VO `prompt` is now used for entry; the IUP dialog fallback was removed after causing focus and dismissal problems.
