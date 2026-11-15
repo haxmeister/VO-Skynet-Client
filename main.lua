@@ -114,8 +114,9 @@ ui:set_chat_focus_handler(function(open)
         local this_trial = input_trial_serial
         input_recovery_timer:SetTimeout(12000, function()
             if input_trial_serial == this_trial and ui.chat_input_open then
-                print("Skynet UI: RmlUi input test timed out; restoring controls and HUD")
-                ui:cancel_chat()
+                print("Skynet UI: RmlUi input timed out after 12 seconds"
+                    .. " without a submit; restoring HUD and flight controls")
+                ui:cancel_chat("safety-timeout")
             end
         end)
         return true
@@ -209,6 +210,13 @@ end
 local lifecycle = {}
 function lifecycle:OnEvent(event, view)
     if event == "HUD_SHOW" then
+        if hud_temporarily_hidden and ui.chat_input_open then
+            -- VO can reopen its native HUD independently of the RmlUi form.
+            -- Log and clean up instead of leaving stale text/focus behind.
+            print("Skynet UI: external HUD_SHOW during RmlUi chat; canceling input"
+                .. " (view=" .. tostring(view) .. ")")
+            ui:cancel_chat("external-hud-show")
+        end
         ship_hud_visible = (view == "ship")
     elseif event == "HUD_HIDE" and hud_temporarily_hidden then
         -- Hiding the native HUD is part of this short RmlUi test.
@@ -252,7 +260,7 @@ local function refresh()
 end
 ticker:SetTimeout(1000, refresh)
 
--- A always remains the hard-coded chat hotkey. In the test mode it
+-- Shift+A remains the hard-coded chat hotkey. In the test mode it
 -- opens the inline RmlUi field instead of VO's normal chat prompt.
 local function activate_chat()
     sync_visibility()
