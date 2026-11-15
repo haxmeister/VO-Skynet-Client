@@ -59,6 +59,19 @@ Both test modes revert to VO's native prompt on the next interface load. Enter/E
 
 This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
+### ACTIVE attribute experiment (separate feature branch)
+The `feature/rmlui-hud-active-test` branch adds a third opt-in mode for the same validated RmlUi form:
+
+```
+/skynetui input active
+```
+
+While stationary in a safe sector, press **Shift+A** and check whether the native radar and rest of the HUD **stay visible** and whether you can **type in the RmlUi chat field**. Press Enter to echo a `LOCAL TEST` message or Escape to cancel. The experiment sets `HUD.dlg.active = "NO"` instead of calling `HideDialog`, then calls `Game.SetInputMode(false)` and focuses the field. Its console messages report the previous and resulting `active` values, and whether RmlUi receives input events.
+
+On Enter, Escape, failure, or the **12-second safety timeout**, the plugin restores the HUD dialog's prior `active` state (defaulting to `YES` if unset), switches back to `Game.SetInputMode(true)`, and hides the mouse. You can also use `/skynetui input native` to return to the known-good native VO prompt. If the HUD is unresponsive after a failed experiment, use `ReloadInterface()`.
+
+This **does not modify any RLB file**, change the client's native event dispatcher, or guarantee that `ACTIVE=NO` bypasses IUP's input interception. It is an isolated feature-branch test to determine whether a Lua-only solution is possible. The original `hud` hide/restore experiment remains available for comparison. Do not merge this branch to main until it has been tested in game.
+
 ### Verified RmlUi text entry (feature branch)
 
 Live VO testing confirmed that the RmlUi chat input accepts typed text and that **Enter submits**, **Escape cancels**, and the input clears when closed. RmlUi exposes edited text through `change` event `event.parameters.value`, not the generic Element's `input.value` property. Submission echoes `LOCAL TEST: ...` in Skynet's chat history. Text is not sent to any server.
