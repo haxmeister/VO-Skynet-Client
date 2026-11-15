@@ -34,9 +34,9 @@ local function element(id)
 end
 
 local ids = {
-    "skynet-panel", "skynet-header", "skynet-columns", "skynet-title",
+    "skynet-panel", "skynet-header", "skynet-identity", "skynet-columns", "skynet-title",
     "layout-done", "resize-grip",
-    "online-panel", "online-list", "online-count",
+    "online-panel", "online-list",
     "chat-panel", "chat-list", "chat-form", "chat-input",
     "sightings-panel", "sightings-list", "connection-status",
     "split-left", "split-right", "split-left-guide", "split-right-guide",
@@ -111,12 +111,11 @@ assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
 assert(nodes["split-right-guide"].style["background-color"] == "#4c7188")
--- Section top padding (3px) plus heading (18px) leaves the text above
--- the divider. The enclosing 8px splitter still spans the full height.
-assert(nodes["split-left-guide"].style["margin-top"] == "21px")
-assert(nodes["split-right-guide"].style["margin-top"] == "21px")
-assert(nodes["split-left-guide"].style.height == "116px")
-assert(nodes["split-right-guide"].style.height == "116px")
+-- No section labels: guides fill the entire height of the 8px splitters.
+assert(nodes["split-left-guide"].style["margin-top"] == "0px")
+assert(nodes["split-right-guide"].style["margin-top"] == "0px")
+assert(nodes["split-left-guide"].style.height == "137px")
+assert(nodes["split-right-guide"].style.height == "137px")
 assert(nodes["split-left"].style.height == "137px")
 assert(nodes["split-right"].style.height == "137px")
 assert(nodes["skynet-panel"].classes["layout-edit"] == false)
@@ -240,7 +239,9 @@ assert(ui.geometry.chat == 280)
 local class_updates = nodes["skynet-panel"].class_updates
 ui:layout()
 assert(nodes["skynet-panel"].class_updates == class_updates)
-assert(nodes["chat-list"].style.height == "113px")
+assert(nodes["chat-list"].style.height == "131px")
+assert(nodes["online-list"].style.height == "131px")
+assert(nodes["sightings-list"].style.height == "131px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
 assert(ui:set_layout_editing(true))
@@ -256,14 +257,16 @@ assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
 assert(nodes["split-right-guide"].style["background-color"] == "#75a9c8")
-assert(nodes["split-left-guide"].style["margin-top"] == "21px")
-assert(nodes["split-right-guide"].style["margin-top"] == "21px")
-assert(nodes["split-left-guide"].style.height == "114px")
-assert(nodes["split-right-guide"].style.height == "114px")
+assert(nodes["split-left-guide"].style["margin-top"] == "0px")
+assert(nodes["split-right-guide"].style["margin-top"] == "0px")
+assert(nodes["split-left-guide"].style.height == "135px")
+assert(nodes["split-right-guide"].style.height == "135px")
 assert(nodes["split-left"].style.height == "135px")
 assert(nodes["split-right"].style.height == "135px")
 assert(nodes["skynet-panel"].classes["layout-edit"] == true)
-assert(nodes["chat-list"].style.height == "111px")
+assert(nodes["chat-list"].style.height == "129px")
+assert(nodes["online-list"].style.height == "129px")
+assert(nodes["sightings-list"].style.height == "129px")
 assert(nodes["layout-done"].style.display == "block")
 assert(nodes["resize-grip"].style.display == "block")
 assert(focus[#focus] == true)
@@ -338,4 +341,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: blue headings above divider lines, preserved splitter drag heights, orange Skynet title, flood follow")
+print("PASS: header-only Skynet/status, reclaimed column heading space, full-height guides, flood follow")
