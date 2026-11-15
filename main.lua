@@ -273,7 +273,7 @@ RegisterUserCommand("skynetui", function(_, args)
             end
             -- One DOM update and one follow scroll, not 40 repeated rebuilds.
             ui:add_chat_batch(messages)
-            ui:follow_chat() -- Explicit test command should show message 40.
+            ui:follow_chat(true) -- Explicit test; log actual scroll metrics on 3 passes.
             print("Skynet UI: added 40 messages; following newest")
         else
             ui:add_chat("Raven", "New demo message.")
