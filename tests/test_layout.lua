@@ -105,6 +105,11 @@ local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
 local chat_css = assert(rml_source:match("#chat%-list%s*{([^}]+)}"))
+local scroller_css = assert(rml_source:match("%.scroller%s*{([^}]+)}"))
+assert(scroller_css:find("overflow-y: auto;", 1, true))
+assert(scroller_css:find("overflow-x: hidden;", 1, true))
+assert(rml_source:find('id="online-list" class="scroller"', 1, true))
+assert(rml_source:find('id="sightings-list" class="scroller"', 1, true))
 -- RmlUi rgba alpha is 0..255: 166 is 65% opaque.
 local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
@@ -339,6 +344,13 @@ assert(nodes["chat-list"].style.height == "126px")
 assert(nodes["online-list"].style.height == "126px")
 assert(nodes["sightings-list"].style.height == "126px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
+-- Independent scrollers must not be reset by periodic layout or age updates.
+nodes["online-list"].scroll_top = 45
+nodes["sightings-list"].scroll_top = 63
+ui:layout()
+ui:tick()
+assert(nodes["online-list"].scroll_top == 45)
+assert(nodes["sightings-list"].scroll_top == 63)
 
 assert(ui:set_layout_editing(true))
 assert(ui.layout_editing)
@@ -552,6 +564,16 @@ assert(main_source:find("local phases = {0, 0.70, 0.85, 0.90, 0.95, 0.98}", 1, t
 assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
+-- Purpose-built in-game overflow test for both non-chat columns.
+assert(main_source:find('args[2] == "scroll"', 1, true))
+assert(main_source:find('args[2] == "scrollcheck"', 1, true))
+assert(main_source:find('for i = 1, 32 do', 1, true))
+assert(main_source:find('for i = 1, 24 do', 1, true))
+assert(main_source:find('ui:replace_online(names)', 1, true))
+assert(main_source:find('ui:add_sighting("TestSight-"', 1, true))
+assert(main_source:find('tonumber(list.scroll_top)', 1, true))
+assert(main_source:find('tonumber(list.client_height)', 1, true))
+assert(main_source:find('tonumber(list.scroll_height)', 1, true))
 
 -- Exercise actual preference serialization from main.lua without loading
 -- the whole in-game entry point. VO exposes gkini.ReadString/WriteString.
@@ -598,4 +620,4 @@ assert(save_pref(legacy))
 assert(persisted == "220,585,650,216,40,190")
 gkini, Game = old_gkini, old_game
 
-print("PASS: 40px online minimum, gkini persistence, layout drag, smooth sighting fade")
+print("PASS: online/sightings overflow tests, layout persistence, chat follow and sighting fade")
