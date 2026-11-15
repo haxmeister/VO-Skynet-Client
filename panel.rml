@@ -23,8 +23,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-radius: 5px;
 }
 #skynet-header {
-    /* Layout-only chrome; ui.lua switches this to flex while editing. */
-    display: none;
+    /* The SKYNET name and connection state stay visible in every mode.
+       There is no title-bar rule or background chrome during flight. */
+    display: flex;
     flex: 0 0 auto;
     box-sizing: border-box;
     width: 100%;
@@ -33,11 +34,10 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     justify-content: space-between;
     align-items: center;
     padding: 2px 9px;
-    color: #7fc9ff;
+    color: #75b9e8;
     font-size: 12px;
     letter-spacing: 1px;
-    border-bottom-width: 1px;
-    border-bottom-color: #294d68;
+    border-bottom-width: 0px;
     drag: drag;
 }
 #skynet-title { font-weight: bold; }
@@ -83,7 +83,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     min-height: 18px;
     font-weight: bold;
     font-size: 11px;
-    color: #8bcdf4;
+    /* Traditional SKYNET orange headings against blue HUD chrome. */
+    color: #f5a44b;
+    text-decoration: underline;
     white-space: nowrap;
 }
 .scroller {
