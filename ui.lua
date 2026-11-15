@@ -171,8 +171,8 @@ function UI:set_chat_diagnostics(enabled)
     self.chat_diagnostic_events = 0
 end
 
--- Enter submits and Escape cancels the inline RmlUi chat.
--- The working VO client reports key identifiers 72 / 81 respectively.
+-- Enter submits, Escape cancels, and Tab calls VO's own TabCompleteName cache.
+-- The working VO client reports key identifiers 72 / 81 for Enter / Escape.
 -- Keep the form-submit event as a fallback; no visible buttons are required.
 function UI:bind_chat_input()
     if self.chat_listeners_bound then return true end
@@ -187,6 +187,7 @@ function UI:bind_chat_input()
     local esc = (key_ids and key_ids.KI_ESCAPE) or 81
     local enter = (key_ids and key_ids.KI_RETURN) or 72
     local num_enter = (key_ids and key_ids.KI_NUMPADENTER) or 61
+    local tab = (key_ids and key_ids.KI_TAB) or 70
 
     local function trace(kind, extra)
         if not self.chat_diagnostics or not self.chat_input_open then return end
@@ -234,12 +235,94 @@ function UI:bind_chat_input()
         end
     end
 
+    -- One-shot name completion uses VO's own cache of previously seen names.
+    -- We only complete a fragment at the END of the draft in this first test;
+    -- RmlUi's generic Element wrapper does not expose the text caret reliably.
+    -- Try the longest suffix first so multi-word player names still work after
+    -- a message prefix ("hello Captain Ja" -> complete "Captain Ja").
+    local function complete_name()
+        if type(TabCompleteName) ~= "function" then
+            print("Skynet UI: TabCompleteName is not available in this plugin")
+            return
+        end
+        local draft = self.chat_draft
+        if type(draft) ~= "string" or draft == "" or not draft:match("%S$") then
+            print("Skynet UI: Tab completion skipped (empty input or trailing space)")
+            return
+        end
+
+        local starts = {1}
+        for i = 1, #draft - 1 do
+            -- A suffix may begin after whitespace or chat punctuation.
+            -- Keep the entire fragment first for multi-word names.
+            if draft:sub(i, i):match("[%s%p]") and
+                not draft:sub(i + 1, i + 1):match("[%s%p]") then
+                starts[#starts + 1] = i + 1
+            end
+        end
+
+        local calls = 0
+        local best, start_at
+        for _, first in ipairs(starts) do
+            local fragment = draft:sub(first)
+            if fragment ~= "" then
+                calls = calls + 1
+                local ok, name = pcall(TabCompleteName, fragment)
+                if not ok then
+                    print("Skynet UI: TabCompleteName failed: " .. tostring(name))
+                    return
+                end
+                if type(name) == "string" and name ~= "" then
+                    best, start_at = name, first
+                    break
+                end
+            end
+        end
+        if not best then
+            print("Skynet UI: native name cache found no match ("
+                .. calls .. " fragments checked)")
+            return
+        end
+
+        local updated = draft:sub(1, start_at - 1) .. best
+        if updated == draft then
+            print("Skynet UI: Tab completion already matches cached name")
+            return
+        end
+        -- On this client GetElementById returns a generic Element; .value is
+        -- nil even while typing. The supported generic setter is SetAttribute.
+        -- Verify visually that it changes the live text, not only the attribute.
+        local ok, err = pcall(function()
+            input:SetAttribute("value", updated)
+        end)
+        if not ok then
+            print("Skynet UI: RmlUi input value write failed: " .. tostring(err))
+            return
+        end
+        self.chat_draft = updated
+        local attr_ok, attr_value = pcall(function()
+            return input:GetAttribute("value")
+        end)
+        local caret_ok = pcall(function()
+            input:SetSelection(#updated, #updated)
+        end)
+        print("Skynet UI: native Tab completion applied; old length="
+            .. #draft .. " new length=" .. #updated
+            .. " attribute_readback=" .. tostring(attr_ok and attr_value == updated)
+            .. " caret_set=" .. tostring(caret_ok))
+        -- Retain input focus after the intercepted Tab key.
+        pcall(function() input:Focus() end)
+    end
+
     local function on_key(event, phase)
         if not self.chat_input_open then return end
         local p = event and event.parameters
         local key = p and p.key_identifier
         trace(phase, key or "nil")
-        if key == esc then
+        if key == tab and phase == "keydown" then
+            stop(event)
+            complete_name()
+        elseif key == esc then
             stop(event)
             print("Skynet UI: RmlUi Escape received (" .. phase .. ")")
             self:cancel_chat("escape-" .. phase)
