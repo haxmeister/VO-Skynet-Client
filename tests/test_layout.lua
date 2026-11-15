@@ -39,23 +39,8 @@ local ids = {
 local nodes = {}
 for _, id in ipairs(ids) do nodes[id] = element(id) end
 nodes["chat-form"].style.display = "none"
-nodes["skynet-chat-tail"] = element("skynet-chat-tail")
-local tail = nodes["skynet-chat-tail"]
-function tail:ScrollIntoView(align_with_top)
-    assert(align_with_top == false)
-    self.calls = (self.calls or 0) + 1
-    local list = nodes["chat-list"]
-    list.scroll_top = math.max(0, list.scroll_height - list.client_height)
-end
-
 local doc = {}
-function doc:GetElementById(id)
-    if id == "skynet-chat-tail" and not
-        nodes["chat-list"].inner_rml:find('id="skynet-chat-tail"', 1, true) then
-        return nil
-    end
-    return nodes[id]
-end
+function doc:GetElementById(id) return nodes[id] end
 function doc:Show() self.visible = true end
 function doc:Hide() self.visible = false end
 function doc:Close() self.closed = true end
@@ -111,7 +96,6 @@ assert(nodes["resize-grip"].style.display == "none")
 assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
 flush_follow()
 assert(ui.chat_scroll_pending == false)
-assert(nodes["skynet-chat-tail"].calls == 3)
 assert(ui.chat_follow_bottom == true)
 
 -- A burst of new messages should scroll to the new measured scroll range,
@@ -135,7 +119,6 @@ for i = 2, 40 do
 end
 ui:add_chat_batch(messages)
 assert(renders == 1)
-assert(list.inner_rml:find('id="skynet-chat-tail"', 1, true))
 assert(scroll_timer.schedule_count == scheduled) -- one pending scroll
 list.scroll_height = 520 -- simulate RmlUi relayout after DOM replacement
 list.scroll_top = 0
@@ -254,4 +237,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: bottom anchor ScrollIntoView, 3-pass follow, flood batch, manual scroll, dividers, resize")
+print("PASS: measured-bottom 3-pass follow, flood batch, manual scroll, dividers, resize")
