@@ -67,7 +67,8 @@ end
 -- Reversible keyboard routing test based on Draugath's MDI-Core:
 -- Game.SetInputMode(false) while interacting; true for normal flight.
 -- The previous Game.SetInputMode(0) test was NOT equivalent: Lua 0 is true.
--- We do not touch HUD.dlg or move the native IUP chat widget.
+-- Only the explicitly selected 'hud' test briefly hides HUD.dlg.
+-- Neither test moves or reparents any native IUP control.
 local chat_input_mode = "native" -- default remains the proven VO prompt
 local flight_input_paused = false
 local hidden_hud_dialog = nil
