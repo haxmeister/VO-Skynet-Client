@@ -101,6 +101,27 @@ local ui = UI.new({
 local rml_file = assert(io.open("panel.rml", "r"))
 local rml_source = rml_file:read("*a")
 rml_file:close()
+-- Read only the static declarations used by the nodes whose duplicate Lua
+-- assignments were removed. This is a style contract, not an RmlUi renderer.
+local function static_style(selector, property)
+    local pattern = selector:gsub("([^%w])", "%%%1")
+    local rule = assert(rml_source:match(pattern .. "%s*{([^}]+)}"))
+    local key = property:gsub("%-", "%%-")
+    return assert(rule:match(key .. ":%s*([^;]+);"))
+end
+for _, spec in ipairs({
+    {"skynet-header", "#skynet-header", "display", "flex"},
+    {"skynet-header", "#skynet-header", "border-bottom-width", "0px"},
+    {"skynet-panel", "#skynet-panel", "background-color", "transparent"},
+    {"split-left", ".splitter", "border-width", "0px"},
+    {"split-right", ".splitter", "border-width", "0px"},
+    {"split-left-guide", ".splitter-guide", "margin-top", "0px"},
+    {"split-right-guide", ".splitter-guide", "margin-top", "0px"},
+}) do
+    local value = static_style(spec[2], spec[3])
+    assert(value == spec[4])
+    nodes[spec[1]].style[spec[3]] = value
+end
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
@@ -614,133 +635,7 @@ assert(not ui_source:find("COLUMN_BACKDROP_FADE", 1, true))
 assert(not ui_source:find("columns-solid-fill", 1, true))
 assert(ui_source:find([['<div class="chat-row">']], 1, true))
 
--- The flood command must inject sample sightings at multiple TTL phases,
--- without changing the 40-message batch or follow-to-bottom behavior.
-local main_file = assert(io.open("main.lua", "r"))
-local main_source = main_file:read("*a")
-main_file:close()
-assert(main_source:find("local phases = {0, 0.70, 0.85, 0.90, 0.95, 0.98}", 1, true))
-assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
-assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
-assert(main_source:find("ui:follow_chat(true)", 1, true))
--- Purpose-built in-game overflow test for both non-chat columns.
-assert(main_source:find('args[2] == "scroll"', 1, true))
-assert(main_source:find('args[2] == "scrollcheck"', 1, true))
-assert(main_source:find('for i = 1, 32 do', 1, true))
-assert(main_source:find('for i = 1, 24 do', 1, true))
-assert(main_source:find('ui:replace_online(names)', 1, true))
-assert(main_source:find('ui:add_sighting("TestSight-"', 1, true))
-assert(main_source:find('tonumber(list.scroll_top)', 1, true))
-assert(main_source:find('tonumber(list.client_height)', 1, true))
-assert(main_source:find('tonumber(list.scroll_height)', 1, true))
-
--- VO can have an active ship while the navigation/PDA is open.
--- Verify the extra native HUD visibility gate, not just in-flight status.
-local native_start = assert(main_source:find(
-    "local function native_ship_hud_visible()", 1, true))
-local native_end = assert(main_source:find(
-    "-- HUD_SHOW/HUD_HIDE remain primary", native_start, true))
-local script_compiler = loadstring or load
-local native_code = main_source:sub(native_start, native_end - 1)
-    .. "\nreturn native_ship_hud_visible"
-local native_visible = assert(script_compiler(native_code))()
-local old_hud = HUD
-HUD = {dlg = {visible = "YES"}}
-assert(native_visible())
-HUD.dlg.visible = "NO"
-assert(not native_visible())
-HUD.dlg.visible = false
-assert(not native_visible())
-HUD.dlg.visible = "YES"
-assert(native_visible())
-HUD.dlg.visible = nil
-assert(native_visible()) -- Legacy clients without the property fall back.
-HUD = old_hud
-
--- Execute the actual sync_visibility() logic against a simulated PDA.
--- The active-ship check remains true throughout the menu transition.
-local sync_start = assert(main_source:find(
-    "local function sync_visibility()", 1, true))
-local sync_end = assert(main_source:find(
-    "local lifecycle = {}", sync_start, true))
-local sync_code = [[
-return function(ui, router, is_flying, native_ship_hud_visible)
-    local user_wants_visible = true
-    local ship_hud_visible = true
-]] .. main_source:sub(sync_start, sync_end - 1)
-    .. "\nreturn sync_visibility\nend"
-local sync_factory = assert(script_compiler(sync_code))()
-local nav_is_open, hide_count, show_count, canceled_count = false, 0, 0, 0
-local mock_hud_ui = {
-    visible = true,
-    show = function(self) self.visible = true; show_count = show_count + 1 end,
-    hide = function(self) self.visible = false; hide_count = hide_count + 1 end,
-}
-local mock_input = {
-    active = true,
-    is_active = function(self) return self.active end,
-    cancel_all = function(self)
-        self.active = false
-        canceled_count = canceled_count + 1
-    end,
-}
-local sync_nav = sync_factory(mock_hud_ui, mock_input,
-    function() return true end, function() return not nav_is_open end)
-sync_nav()
-assert(mock_hud_ui.visible and hide_count == 0)
-nav_is_open = true
-sync_nav()
-assert(not mock_hud_ui.visible and hide_count == 1 and canceled_count == 1)
-sync_nav()
-assert(hide_count == 1 and canceled_count == 1) -- No repeated cleanup.
-nav_is_open = false
-sync_nav()
-assert(mock_hud_ui.visible and show_count == 2)
-assert(main_source:find("hud_visibility_timer:SetTimeout(125,", 1, true))
-
--- Exercise actual preference serialization from main.lua without loading
--- the whole in-game entry point. VO exposes gkini.ReadString/WriteString.
-local pref_begin = assert(main_source:find("local LAYOUT_SECTION =", 1, true))
-local pref_end = assert(main_source:find("local ui = UI.new({", pref_begin, true))
-local pref_code = main_source:sub(pref_begin, pref_end - 1)
-    .. "\nreturn load_geometry, save_geometry"
-local compile = loadstring or load
-local load_pref, save_pref = assert(compile(pref_code))()
-local old_gkini, old_game = gkini, Game
-local persisted = nil
-gkini = {
-    ReadString = function(section, key, default)
-        assert(section == "skynetui" and key == "layout_v1")
-        return persisted or default
-    end,
-    WriteString = function(section, key, value)
-        assert(section == "skynetui" and key == "layout_v1")
-        persisted = value
-        return true
-    end,
-}
-Game = nil
-assert(load_pref() == nil)
-assert(save_pref(last_geometry))
-assert(type(persisted) == "string")
-local loaded = assert(load_pref())
-for _, field in ipairs({"left", "top", "width", "height",
-                         "online", "sightings"}) do
-    assert(loaded[field] == last_geometry[field],
-        "gkini round-trip failed: " .. field)
-end
--- Migrate a layout stored using the previous Game preference API.
-persisted = nil
-Game = {
-    GetPrefString = function(key, default)
-        assert(key == "skynetui.layout.v1")
-        return table.concat({"220", "585", "650", "216", "40", "190"}, ",")
-    end,
-}
-local legacy = assert(load_pref())
-assert(legacy.online == 40 and legacy.sightings == 190)
-assert(save_pref(legacy))
-assert(persisted == "220,585,650,216,40,190")
-gkini, Game = old_gkini, old_game
+-- Entry-point demo, PDA and preference checks now execute actual main.lua
+-- in tests/test_main.lua, instead of slicing functions out of its source.
 
 print("PASS: sightings top-follow/newest-first, independent scroll, layout and fade")

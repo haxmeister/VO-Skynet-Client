@@ -40,6 +40,20 @@ local function label(text, color, class)
         .. escape(text) .. '</span>'
 end
 
+-- VO exposes Timer as a callable table in some builds. Reuse injected timers
+-- in tests, and protect construction/cleanup at the engine boundary.
+local function ensure_timer(self, field)
+    if self[field] then return self[field] end
+    local ok, timer = pcall(function() return Timer() end)
+    if not ok then return nil, timer end
+    self[field] = timer
+    return timer
+end
+
+local function stop_timer(timer)
+    if timer then pcall(function() timer:Kill() end) end
+end
+
 function UI.new(options)
     options = options or {}
     local self = {}
@@ -67,20 +81,13 @@ function UI.new(options)
     self.sighting_sequence = 0
     self.sighting_rendered = {}
     self.sighting_opacity_values = {}
-    self.sighting_clock_anchor_ms = nil
-    self.sighting_clock_anchor_wall = nil
     self.context = options.context
-    self.document = nil
     self.visible = options.visible ~= false
     self.connected = false
     self.chat_input_open = false
-    self.chat_draft = ""
-    self.chat_listeners_bound = false
-    self.chat_diagnostics = false
     self.on_chat_submit = options.on_chat_submit
     self.on_chat_focus = options.on_chat_focus
     self.text_entry_class = options.text_entry_class
-    self.chat_entry = nil
     -- Follow fresh messages until the user scrolls away from the bottom.
     -- A delayed scroll is needed because RmlUi lays out inner_rml after it
     -- has been assigned, so scroll_height may still be the OLD value.
@@ -97,10 +104,7 @@ function UI.new(options)
     self.save_geometry = options.save_geometry
     self.on_layout_focus = options.on_layout_focus
     self.layout_editing = false
-    self.layout_chrome_applied = nil
     self.layout_controls_bound = false
-    self.geometry = nil
-    self.drag_state = nil
     self.online = {}
     self.chat = {}
     self.sightings = {}
@@ -238,11 +242,7 @@ function UI:layout()
     panel.style.width = px(g.width)
     panel.style.height = px(g.height)
 
-    -- Window chrome is shown only during /skynetui layout. The outer
-    -- shell stays clear; one background on the entire column row fills
-    -- the splitter gaps without double-tinting the transparent sections.
-    -- The compact SKYNET tab matches that row fill in panel.rml.
-    -- RmlUi's style proxy uses RCSS property names for hyphenated keys.
+    -- Static appearance lives in panel.rml; only geometry and mode change here.
     local editing = self.layout_editing
     if self.layout_chrome_applied ~= editing then
         -- The parent class selectively paints RmlUi's generated scrollbar
@@ -266,28 +266,14 @@ function UI:layout()
                 .. tostring(err))
         end
     end
-    local header = self:node("skynet-header")
-    -- Keep SKYNET and its actual connection state visible while flying.
-    -- The title row has no divider line, even while editing the layout.
-    if header then
-        header.style.display = "flex"
-        header.style["border-bottom-width"] = "0px"
-    end
-    -- Do not double-tint the tab and columns with an underlying panel
-    -- fill. The outer frame remains useful in layout mode.
-    panel.style["background-color"] = "transparent"
     panel.style["border-width"] = editing and "1px" or "0px"
     panel.style["border-color"] = editing and "#3f7799" or "transparent"
 
-    -- The borderless title row is present in both modes. Only the outer
-    -- window border (visible in layout mode) changes the content height.
-    -- The geometry still describes the same outer window rectangle.
-    local header_height = HEADER_HEIGHT
     local border_allowance = editing and 2 or 0
 
     -- Give both the column row and each list its own *definite* height.
     -- The chat form occupies a fixed row only while input is open.
-    local columns_height = math.max(1, g.height - header_height - border_allowance)
+    local columns_height = math.max(1, g.height - HEADER_HEIGHT - border_allowance)
     local section_height = math.max(1, columns_height - COLUMN_PADDING)
     -- No column headings; reclaim their previous 18px for the lists.
     local common_list_height = math.max(1,
@@ -297,38 +283,23 @@ function UI:layout()
 
     local row = self:node("skynet-columns")
     if row then row.style.height = px(columns_height) end
-    local online = self:node("online-panel")
-    if online then
-        online.style.width = px(g.online)
-        online.style.height = px(section_height)
-    end
-    local chat = self:node("chat-panel")
-    if chat then
-        chat.style.width = px(g.chat)
-        chat.style.height = px(section_height)
-    end
-    local sightings = self:node("sightings-panel")
-    if sightings then
-        sightings.style.width = px(g.sightings)
-        sightings.style.height = px(section_height)
+    for _, column in ipairs({"online", "chat", "sightings"}) do
+        local node = self:node(column .. "-panel")
+        if node then
+            node.style.width = px(g[column])
+            node.style.height = px(section_height)
+        end
     end
     for _, id in ipairs({"split-left", "split-right"}) do
         local node = self:node(id)
         if node then
             node.style.height = px(section_height)
-            -- The full 8px gutter still receives drag events. Its border
-            -- stays off so there can never be two separating lines.
-            node.style["border-width"] = "0px"
             node.style["background-color"] = editing
                 and "rgba(23, 62, 83, 64)" or "transparent"
         end
         local guide = self:node(id .. "-guide")
         if guide then
-            -- The 1px guide remains full height. Its 12px faded ends and
-            -- solid center (including edit-mode colors) are defined in
-            -- panel.rml rather than painting a solid line over the fades.
-            -- The containing 8px splitter remains the same drag target.
-            guide.style["margin-top"] = "0px"
+            -- Explicit height preserves the three RCSS separator segments.
             guide.style.height = px(section_height)
         end
     end
@@ -340,13 +311,9 @@ function UI:layout()
     local list = self:node("chat-list")
     if list then list.style.height = px(chat_list_height) end
 
-    local done = self:node("layout-done")
-    if done then
-        done.style.display = self.layout_editing and "block" or "none"
-    end
-    local grip = self:node("resize-grip")
-    if grip then
-        grip.style.display = self.layout_editing and "block" or "none"
+    for _, id in ipairs({"layout-done", "resize-grip"}) do
+        local node = self:node(id)
+        if node then node.style.display = editing and "block" or "none" end
     end
     if self.layout_last_viewport_width ~= self:viewport() then
         -- Only log changes when the viewport width changes; not every drag.
@@ -361,15 +328,11 @@ function UI:save_current_geometry()
     if type(self.save_geometry) ~= "function" or not self.geometry then
         return
     end
-    local g = self.geometry
-    local ok, err = pcall(self.save_geometry, {
-        left = math.floor(g.left + 0.5),
-        top = math.floor(g.top + 0.5),
-        width = math.floor(g.width + 0.5),
-        height = math.floor(g.height + 0.5),
-        online = math.floor(g.online + 0.5),
-        sightings = math.floor(g.sightings + 0.5),
-    })
+    local saved = {}
+    for _, field in ipairs({"left", "top", "width", "height", "online", "sightings"}) do
+        saved[field] = math.floor(self.geometry[field] + 0.5)
+    end
+    local ok, err = pcall(self.save_geometry, saved)
     if not ok then
         print("Skynet UI: unable to save layout: " .. tostring(err))
     end
@@ -432,7 +395,6 @@ function UI:bind_layout_controls()
         ["split-left"] = "split-left",
         ["split-right"] = "split-right",
     }
-    local registered = 0
     for element_id, action in pairs(handles) do
         local node = self:node(element_id)
         if not node then
@@ -500,7 +462,6 @@ function UI:bind_layout_controls()
             print("Skynet UI: cannot bind " .. kind .. " drag: " .. tostring(err))
             return false
         end
-        registered = registered + 1
     end
 
     local done = self:node("layout-done")
@@ -516,8 +477,8 @@ function UI:bind_layout_controls()
         print("Skynet UI: cannot bind DONE control: " .. tostring(err))
         return false
     end
-    self.layout_controls_bound = registered == 4
-    return self.layout_controls_bound
+    self.layout_controls_bound = true
+    return true
 end
 
 function UI:unmount()
@@ -527,25 +488,15 @@ function UI:unmount()
         self.document:Close()
         self.document = nil
     end
-    self.chat_listeners_bound = false
     self.chat_entry = nil
     self.chat_scroll_pending = false
     self.chat_scroll_user_input = false
     self.chat_scroll_mouse_down = false
     self.chat_scroll_trace = false
-    if self.chat_scroll_timer then
-        pcall(function() self.chat_scroll_timer:Kill() end)
-    end
+    stop_timer(self.chat_scroll_timer)
     self.chat_follow_bottom = true
     self.chat_scroll_bound = false
-    self.sighting_fade_active = false
-    if self.sighting_fade_timer then
-        pcall(function() self.sighting_fade_timer:Kill() end)
-    end
-    self.sighting_top_pending = false
-    if self.sighting_top_timer then
-        pcall(function() self.sighting_top_timer:Kill() end)
-    end
+    self:stop_sighting_timers()
     self.sighting_rendered = {}
     self.sighting_opacity_values = {}
     self.layout_chrome_applied = nil
@@ -565,15 +516,15 @@ function UI:hide()
     if self.layout_editing then self:set_layout_editing(false) end
     if not self.visible then return end
     self.visible = false
-    self.sighting_fade_active = false
-    if self.sighting_fade_timer then
-        pcall(function() self.sighting_fade_timer:Kill() end)
-    end
-    self.sighting_top_pending = false
-    if self.sighting_top_timer then
-        pcall(function() self.sighting_top_timer:Kill() end)
-    end
+    self:stop_sighting_timers()
     if self.document then self.document:Hide() end
+end
+
+function UI:stop_sighting_timers()
+    self.sighting_fade_active = false
+    self.sighting_top_pending = false
+    stop_timer(self.sighting_fade_timer)
+    stop_timer(self.sighting_top_timer)
 end
 
 -- The UI only collects a message; an integrator decides how to deliver it.
@@ -600,17 +551,10 @@ function UI:notify_chat_focus(open)
     return result ~= false
 end
 
-function UI:set_chat_diagnostics(enabled)
-    self.chat_diagnostics = not not enabled
-    if self.chat_entry then
-        self.chat_entry:set_diagnostics(self.chat_diagnostics)
-    end
-end
-
 -- Chat delegates low-level RmlUi events to the reusable text-entry module.
 -- Other components can use the same class with their own callbacks.
 function UI:bind_chat_input()
-    if self.chat_listeners_bound then return true end
+    if self.chat_entry then return true end
     local form = self:node("chat-form")
     local input = self:node("chat-input")
     local klass = self.text_entry_class
@@ -628,10 +572,6 @@ function UI:bind_chat_input()
         input = input,
         context = self.context,
         completer = TabCompleteName,
-        diagnostics = self.chat_diagnostics,
-        on_change = function(value)
-            self.chat_draft = value
-        end,
         on_submit = function(message, source)
             self:submit_chat(source, message)
         end,
@@ -645,19 +585,16 @@ function UI:bind_chat_input()
         return false
     end
     self.chat_entry = entry
-    self.chat_listeners_bound = true
     return true
 end
 
 function UI:begin_chat()
-    if not self.visible or not self.chat_listeners_bound
-        or not self.chat_entry then return false end
+    if not self.visible or not self.chat_entry then return false end
     local form = self:node("chat-form")
     if not form then return false end
     if self.chat_input_open then return true end
 
     self.chat_input_open = true
-    self.chat_draft = ""
     form.style.display = "block"
     self:layout() -- shrink the history viewport before taking input focus
     self:schedule_chat_follow()
@@ -684,7 +621,6 @@ end
 function UI:cancel_chat(reason)
     if not self.chat_input_open then return end
     self.chat_input_open = false
-    self.chat_draft = ""
     print("Skynet UI: closing RmlUi chat: " .. tostring(reason or "cancel"))
     if self.chat_entry then self.chat_entry:close() end
     local form = self:node("chat-form")
@@ -712,7 +648,8 @@ end
 
 function UI:submit_chat(source, submitted)
     if not self.chat_input_open then return false end
-    local message = type(submitted) == "string" and submitted or self.chat_draft
+    local message = type(submitted) == "string" and submitted
+        or (self.chat_entry and self.chat_entry.draft or "")
     print("Skynet UI: RmlUi submit via " .. tostring(source or "unknown")
         .. "; text length=" .. #message)
     -- Deliver before restoring the IUP HUD, so its show event can't interrupt
@@ -781,7 +718,6 @@ function UI:add_chat_batch(entries)
 end
 
 function UI:add_chat(name, message)
-    if type(name) ~= "string" or type(message) ~= "string" then return end
     self:add_chat_batch({{name = name, message = message}})
 end
 
@@ -820,14 +756,11 @@ function UI:follow_sightings_top()
     if not list then return end
     list.scroll_top = 0
     if self.sighting_top_pending or not self.visible then return end
-    if not self.sighting_top_timer then
-        local ok, timer = pcall(function() return Timer() end)
-        if not ok or not timer then return end
-        self.sighting_top_timer = timer
-    end
+    local timer = ensure_timer(self, "sighting_top_timer")
+    if not timer then return end
     self.sighting_top_pending = true
     local ok = pcall(function()
-        self.sighting_top_timer:SetTimeout(40, function()
+        timer:SetTimeout(40, function()
             self.sighting_top_pending = false
             local current = self:node("sightings-list")
             if current and self.visible then current.scroll_top = 0 end
@@ -912,31 +845,26 @@ end
 function UI:schedule_sighting_fade()
     if self.sighting_fade_active or not self.document or not self.visible
         or not next(self.sightings) then return end
-    if not self.sighting_fade_timer then
-        -- VO's Timer is sometimes a callable table, not a function.
-        local ok, timer = pcall(function() return Timer() end)
-        if not ok or not timer then return end
-        self.sighting_fade_timer = timer
-    end
+    local timer = ensure_timer(self, "sighting_fade_timer")
+    if not timer then return end
     self.sighting_fade_active = true
-    local function pulse()
+    local pulse
+    local function schedule()
+        local ok = pcall(function()
+            timer:SetTimeout(self:sighting_fade_delay(), pulse)
+        end)
+        if not ok then self.sighting_fade_active = false end
+    end
+    pulse = function()
         if not self.sighting_fade_active or not self.document
             or not self.visible or not next(self.sightings) then
             self.sighting_fade_active = false
             return
         end
         self:update_sighting_opacity()
-        local ok = pcall(function()
-            self.sighting_fade_timer:SetTimeout(
-                self:sighting_fade_delay(), pulse)
-        end)
-        if not ok then self.sighting_fade_active = false end
+        schedule()
     end
-    local ok = pcall(function()
-        self.sighting_fade_timer:SetTimeout(
-            self:sighting_fade_delay(), pulse)
-    end)
-    if not ok then self.sighting_fade_active = false end
+    schedule()
 end
 
 function UI:tick()
@@ -990,8 +918,6 @@ function UI:render_online()
         end
         node.inner_rml = table.concat(output)
     end
-    local count = self:node("online-count")
-    if count then count.inner_rml = tostring(#items) end
 end
 
 -- RmlUi may report the previous scroll range immediately after inner_rml.
@@ -1034,19 +960,12 @@ end
 
 function UI:schedule_chat_follow()
     if not self.chat_follow_bottom or self.chat_scroll_pending then return end
-    if not self.chat_scroll_timer then
-        -- In VO, Timer() may be a callable table, not a Lua function.
-        -- type(Timer) == "function" incorrectly rejected the working
-        -- constructor and forced every flood follow into pass 0.
-        local made, timer_or_err = pcall(function() return Timer() end)
-        if not made or not timer_or_err then
-            print("Skynet UI: cannot create chat follow timer: "
-                .. tostring(timer_or_err))
-            self:scroll_chat_to_bottom(0)
-            self.chat_scroll_trace = false
-            return
-        end
-        self.chat_scroll_timer = timer_or_err
+    local timer, issue = ensure_timer(self, "chat_scroll_timer")
+    if not timer then
+        print("Skynet UI: cannot create chat follow timer: " .. tostring(issue))
+        self:scroll_chat_to_bottom(0)
+        self.chat_scroll_trace = false
+        return
     end
     self.chat_scroll_pending = true
 
@@ -1068,7 +987,7 @@ function UI:schedule_chat_follow()
         -- a single 40ms callback always sees finished RmlUi layout.
         local delay = number == 1 and 120 or 240
         local ok, err = pcall(function()
-            self.chat_scroll_timer:SetTimeout(delay, function()
+            timer:SetTimeout(delay, function()
                 pass(number + 1)
             end)
         end)
@@ -1081,7 +1000,7 @@ function UI:schedule_chat_follow()
     end
 
     local ok, err = pcall(function()
-        self.chat_scroll_timer:SetTimeout(40, function()
+        timer:SetTimeout(40, function()
             pass(1)
         end)
     end)

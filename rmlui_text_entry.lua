@@ -18,8 +18,6 @@ function Entry.new(options)
     self.on_change = options.on_change
     self.on_submit = options.on_submit
     self.on_cancel = options.on_cancel
-    self.diagnostics = options.diagnostics == true
-    self.diagnostic_events = 0
     self.draft = ""
     self.is_open = false
     self.bound = false
@@ -38,20 +36,6 @@ end
 
 local function stop(event)
     if event then pcall(function() event:StopPropagation() end) end
-end
-
-function Entry:trace(kind, value)
-    if not self.diagnostics or not self.is_open then return end
-    self.diagnostic_events = self.diagnostic_events + 1
-    if self.diagnostic_events <= 35 then
-        print("Skynet RmlUi input: event=" .. tostring(kind)
-            .. (value == nil and "" or (" value=" .. tostring(value))))
-    end
-end
-
-function Entry:set_diagnostics(enabled)
-    self.diagnostics = enabled == true
-    self.diagnostic_events = 0
 end
 
 function Entry:set_draft(value)
@@ -138,22 +122,13 @@ function Entry:bind()
             local value = params and params.value
             if type(value) == "string" then
                 self:set_draft(value)
-                self:trace("change", #value)
             end
         end, false)
-
-        for _, kind in ipairs({"focus", "blur", "click", "textinput"}) do
-            local label = kind
-            input:AddEventListener(label, function()
-                self:trace(label)
-            end, false)
-        end
 
         local function on_key(event, phase)
             if not self.is_open then return end
             local params = event and event.parameters
             local key = params and params.key_identifier
-            self:trace(phase, key)
             if key == self.keys.tab then
                 stop(event)
                 if phase == "keydown" then self:complete_name() end
@@ -200,7 +175,6 @@ end
 function Entry:open()
     if not self.bound then return false, "text entry not bound" end
     self.is_open = true
-    self.diagnostic_events = 0
     self.completion_serial = self.completion_serial + 1
     self:set_draft("")
     local ok, err = pcall(function() self.input:SetAttribute("value", "") end)

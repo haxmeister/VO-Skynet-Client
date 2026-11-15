@@ -2,7 +2,7 @@
 
 A standalone, translucent **Vendetta Online RmlUi HUD panel** for a future Skynet client. It currently shows simulated alliance presence, chat, and recent sightings. **There is no Skynet networking or real message delivery yet.**
 
-Work is on `feature/rmlui-hud-active-test`; **do not merge into main without a separate decision**.
+The maintenance refactor is on `refactor/simplify-hud`; **do not merge into main without explicit approval**. See [the refactoring audit](docs/REFACTOR.md) for changes, measurements, tests and remaining in-game checks.
 
 ## Features
 
@@ -21,11 +21,11 @@ Work is on `feature/rmlui-hud-active-test`; **do not merge into main without a s
 - Tab completes player names using VO's **existing `TabCompleteName()` cache**. Multi-word completions keep the caret at the end via a delayed RmlUi `KI_END` event.
 - The native VO `prompt` can still be selected if needed.
 
-The HUD/display approach and Tab/caret behavior were independently verified in the VO client before this refactor. **The refactored modules still require in-game regression testing.**
+The HUD, layout, scrolling, fading and input behavior were verified in the VO client before this refactor. **The refactored branch still requires in-game regression testing.**
 
 ## Install and test
 
-Place these repository files in `plugins/skynetui/`, so the plugin entry point is `plugins/skynetui/main.lua`. Reload the interface if you have already started VO.
+Place the runtime files in `plugins/skynetui/`, **including `dev/demo.lua` at that relative path**, so the plugin entry point is `plugins/skynetui/main.lua`. Reload the interface if you have already started VO. The demo module still supplies the same initial samples, local chat echo and `/skynetui demo` commands; separating it does not disable them.
 
 1. In flight, press **Shift+A**. The RmlUi input should open without hiding the native HUD.
 2. Type some text, then press **Enter**. The panel should display a `LOCAL TEST` message.
@@ -193,8 +193,8 @@ The panel preserves current limits: up to 200 chat messages, 20-character roster
 - RmlUi event handlers are registered with Lua functions rather than string listeners.
 - The only chat delivery currently implemented is a local echo, **not** VO chat or a Skynet server.
 - UI text is HTML-escaped before rendering.
-- Run the module regression checks with `lua tests/test_input.lua` and `lua tests/test_layout.lua` if you have a Lua interpreter installed, then verify interactions in the actual VO client.
+- Run all regression checks with `sh tests/run.sh` (or `LUA=/path/to/lua sh tests/run.sh`). The existing input/layout tests remain, with additional full-entry-point and timer-failure tests. Then verify interactions in the actual VO client.
 
 ## Next milestone
 
-Verify the new panel dragging, column resizing, chat scrollbar, persistent preferences, and visible input row in the actual VO client. The new layout controls have **not** yet been verified in-game. Once validated, integrate real Skynet events and transport.
+Recheck the preserved behaviors on this refactoring branch using the install/test steps above. Once the refactor is validated and approved, real Skynet events and transport remain a separate milestone.

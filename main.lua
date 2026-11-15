@@ -12,6 +12,7 @@ local CHAT_RECOVERY_TIMEOUT_MS = 12000 -- 0 disables automatic recovery.
 local LAYOUT_SECTION = "skynetui"
 local LAYOUT_KEY = "layout_v1"
 local LEGACY_LAYOUT_PREF = "skynetui.layout.v1"
+local LAYOUT_FIELDS = {"left", "top", "width", "height", "online", "sightings"}
 
 local function read_geometry_value()
     if gkini and type(gkini.ReadString) == "function" then
@@ -40,20 +41,15 @@ local function load_geometry()
         values[#values + 1] = tonumber(value)
     end
     if #values ~= 6 then return nil end
-    for i = 1, 6 do
-        if type(values[i]) ~= "number" then return nil end
-    end
-    return {
-        left = values[1], top = values[2], width = values[3],
-        height = values[4], online = values[5], sightings = values[6],
-    }
+    local geometry = {}
+    for i, field in ipairs(LAYOUT_FIELDS) do geometry[field] = values[i] end
+    return geometry
 end
 
 local function save_geometry(geometry)
-    local packed = table.concat({
-        geometry.left, geometry.top, geometry.width,
-        geometry.height, geometry.online, geometry.sightings,
-    }, ",")
+    local values = {}
+    for i, field in ipairs(LAYOUT_FIELDS) do values[i] = geometry[field] end
+    local packed = table.concat(values, ",")
     if gkini and type(gkini.WriteString) == "function" then
         local ok, result = pcall(gkini.WriteString,
             LAYOUT_SECTION, LAYOUT_KEY, packed)
@@ -97,29 +93,9 @@ if not ok then
     return
 end
 
--- Simulated roster and chat. This plugin does not send any network messages.
-local now = os.time()
-ui:set_alliance_color("itani", "#65c6ff")
-ui:set_alliance_color("serco", "#ff8282")
-ui:set_alliance_color("uit", "#80e5a6")
-ui:set_player_alliance("Falcon", "itani")
-ui:set_player_alliance("Raven", "serco")
-ui:set_player_alliance("Wraith", "uit")
-ui:set_player_alliance("Specter", "itani")
-ui:set_player_alliance("Drake", "serco")
-ui:set_sector_owner("Odia M-14", "serco")
-ui:set_sector_owner("Sedina B-8", "itani")
-ui:replace_online({ "Wraith", "Falcon", "Raven", "Specter" })
-ui:add_chat("Falcon", "Anyone near Sedina?")
-ui:add_chat("Raven", "Two hostiles spotted.")
-ui:add_chat("Wraith", "Heading there now.")
-ui:add_chat("Falcon", "I'll hold position.")
-ui:add_sighting("Drake", "Vult", "Odia M-14", now - 8)
-ui:add_sighting("Specter", "Prom", "Sedina B-8", now - 17)
-ui:set_connected(true) -- Demonstration indicator, not a real connection.
-ui:set_chat_submit_handler(function(message)
-    ui:add_chat("LOCAL TEST", message)
-end)
+-- Keep the current sample display; demo implementation lives outside startup.
+local Demo = dofile("dev/demo.lua")
+Demo.seed(ui)
 
 local user_wants_visible = true
 local chat_input_mode = "rml" -- Native VO prompt remains an emergency fallback.
@@ -247,25 +223,25 @@ local function sync_visibility()
     end
 end
 
+-- One event map drives both registration and the visibility transition.
+local hud_events = {
+    HUD_SHOW = "show", HUD_HIDE = "hide",
+    ENTERING_STATION = "hide", ENTERED_STATION = "hide", SHOW_STATION = "hide",
+    PLAYER_LOGGED_OUT = "hide", SERVER_DISCONNECTED = "hide", UNLOAD_INTERFACE = "hide",
+    LEAVING_STATION = "flight", SHIP_SPAWNED = "flight", PLAYER_ENTERED_GAME = "flight",
+}
 local lifecycle = {}
 function lifecycle:OnEvent(event, view)
-    if event == "HUD_SHOW" then
+    local action = hud_events[event]
+    if action == "show" then
         ship_hud_visible = (view == "ship")
         if not ship_hud_visible then
             router:cancel_all("hud-view-changed")
         end
-    elseif event == "HUD_HIDE"
-        or event == "ENTERING_STATION"
-        or event == "ENTERED_STATION"
-        or event == "SHOW_STATION"
-        or event == "PLAYER_LOGGED_OUT"
-        or event == "SERVER_DISCONNECTED"
-        or event == "UNLOAD_INTERFACE" then
+    elseif action == "hide" then
         ship_hud_visible = false
         router:cancel_all(event)
-    elseif event == "LEAVING_STATION"
-        or event == "SHIP_SPAWNED"
-        or event == "PLAYER_ENTERED_GAME" then
+    elseif action == "flight" then
         ship_hud_visible = is_flying()
     end
     if event == "UNLOAD_INTERFACE" then
@@ -275,12 +251,7 @@ function lifecycle:OnEvent(event, view)
     sync_visibility()
 end
 
-for _, event in ipairs({
-    "HUD_SHOW", "HUD_HIDE",
-    "ENTERING_STATION", "ENTERED_STATION", "SHOW_STATION",
-    "LEAVING_STATION", "SHIP_SPAWNED", "PLAYER_ENTERED_GAME",
-    "PLAYER_LOGGED_OUT", "SERVER_DISCONNECTED", "UNLOAD_INTERFACE",
-}) do
+for event in pairs(hud_events) do
     local registered, reason = pcall(RegisterEvent, lifecycle, event)
     if not registered then
         print("Skynet UI: cannot watch " .. event .. ": " .. tostring(reason))
@@ -330,81 +301,7 @@ RegisterUserCommand("skynetui", function(_, args)
         user_wants_visible = false
     elseif command == "demo" then
         user_wants_visible = true
-        if args and args[2] == "flood" then
-            local messages = {}
-            for i = 1, 40 do
-                messages[#messages + 1] = {
-                    name = "DEMO",
-                    message = "Scrolling test message " .. i
-                        .. ": this intentionally long chat entry should wrap within"
-                        .. " the panel and never push the input below the viewport.",
-                }
-            end
-            -- One chat DOM update and one follow scroll, not 40 rebuilds.
-            ui:add_chat_batch(messages)
-            ui:follow_chat(true) -- Log actual scroll metrics on 3 passes.
-
-            -- Sample the entire lifespan, especially the last 15%:
-            -- three fully visible rows followed by three fading rows.
-            -- Refreshes continue aging/removing these test sightings.
-            local seen_now = os.time()
-            local ttl = math.max(1, tonumber(ui.settings.sighting_ttl) or 60)
-            local phases = {0, 0.70, 0.85, 0.90, 0.95, 0.98}
-            for i, phase in ipairs(phases) do
-                local age = math.floor(ttl * phase)
-                ui:add_sighting("Fade-" .. i, "Vult", "B-8", seen_now - age)
-            end
-            print("Skynet UI: added 40 chat messages and 6 aging sightings;"
-                .. " following newest chat")
-        elseif args and args[2] == "scroll" then
-            -- Force both non-chat columns to overflow without changing the
-            -- player's saved geometry. The demo sightings naturally expire
-            -- on the usual 60-second schedule; rerun to refresh them.
-            local names = {}
-            for i = 1, 32 do
-                names[i] = "TestPilot-" .. string.format("%02d", i)
-            end
-            ui:replace_online(names)
-            local seen_now = os.time()
-            for i = 1, 24 do
-                ui:add_sighting("TestSight-" .. string.format("%02d", i),
-                    "Vult", "B-8", seen_now)
-            end
-            print("Skynet UI: scroll test loaded 32 online pilots and"
-                .. " 24 fresh sightings (expire after usual TTL)."
-                .. " Open /skynetui layout for mouse wheel and scrollbars;"
-                .. " use /skynetui demo scrollcheck to see scroll positions.")
-        elseif args and args[2] == "scrollcheck" then
-            -- Query real RmlUi scroll metrics rather than inferring
-            -- scrolling from the number of generated demo entries.
-            for _, spec in ipairs({
-                {"online", "online-list"},
-                {"sightings", "sightings-list"},
-            }) do
-                local list = ui:node(spec[2])
-                if list then
-                    local ok, top, client, extent = pcall(function()
-                        return tonumber(list.scroll_top),
-                            tonumber(list.client_height),
-                            tonumber(list.scroll_height)
-                    end)
-                    if ok and top and client and extent then
-                        print("Skynet UI: " .. spec[1]
-                            .. " scroll_top=" .. tostring(top)
-                            .. " viewport=" .. tostring(client)
-                            .. " content=" .. tostring(extent)
-                            .. " max=" .. tostring(math.max(0,
-                                extent - client)))
-                    else
-                        print("Skynet UI: " .. spec[1]
-                            .. " scroll metrics unavailable")
-                    end
-                end
-            end
-        else
-            ui:add_chat("Raven", "New demo message.")
-            ui:add_sighting("Drake", "Vult", "Odia M-14")
-        end
+        Demo.run(ui, args and args[2])
     elseif command == "layout" then
         sync_visibility()
         if not ui.visible then
@@ -427,14 +324,13 @@ RegisterUserCommand("skynetui", function(_, args)
         return
     elseif command == "input" then
         local mode = args and args[2]
-        if mode == "rml" or mode == "active" then
+        if mode == "active" then mode = "rml" end
+        if mode == "rml" or mode == "native" then
             ui:cancel_chat()
-            chat_input_mode = "rml"
-            print("Skynet UI: RmlUi text input enabled (HUD remains visible)")
-        elseif mode == "native" then
-            ui:cancel_chat()
-            chat_input_mode = "native"
-            print("Skynet UI: native VO prompt fallback enabled")
+            chat_input_mode = mode
+            print(mode == "rml"
+                and "Skynet UI: RmlUi text input enabled (HUD remains visible)"
+                or "Skynet UI: native VO prompt fallback enabled")
         else
             print("Skynet UI: /skynetui input rml|native")
         end

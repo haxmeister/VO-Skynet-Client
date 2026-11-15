@@ -160,6 +160,10 @@ local entry = Text.new({
     caret_timer = Timer(),
 })
 assert(entry:bind())
+-- Removed experimental tracing must leave just the four functional listeners.
+local listener_count = 0
+for _ in pairs(input.listeners) do listener_count = listener_count + 1 end
+assert(listener_count == 3) -- change, keydown, keyup; submit is on the form.
 assert(entry:open())
 assert(entry:focus())
 input:dispatch("change", {value = "lost"})
@@ -185,5 +189,38 @@ assert(not input.focused)
 assert(entry:open())
 input:dispatch("keydown", {key_identifier = 81})
 assert(canceled_entry == "escape-keydown")
+
+-- Queued completion must not move focus after close/reopen, even if a new
+-- draft has exactly the same text as the previous completion.
+input:dispatch("change", {value = "lost"})
+input:dispatch("keydown", {key_identifier = 70})
+local stale_caret = entry.caret_timer.callback
+entry:close()
+entry:open()
+input:dispatch("change", {value = "Lost Crow"})
+local key_count = #keys_received
+stale_caret()
+assert(#keys_received == key_count)
+input:dispatch("keydown", {key_identifier = 61})
+assert(messages[#messages][1] == "Lost Crow")
+assert(messages[#messages][2] == "enter-keydown")
+form:dispatch("submit", {message = "form value"})
+assert(messages[#messages][1] == "form value")
+assert(messages[#messages][2] == "form-submit")
+entry:close()
+
+-- A requested watchdog must fail closed on construction or scheduling error.
+for _, factory in ipairs({
+    function() error("constructor failed") end,
+    function() return {SetTimeout = function() error("schedule failed") end} end,
+}) do
+    local failed_router = Input.new({
+        get_hud = function() return hud end,
+        set_input_mode = function() end,
+        new_timer = factory,
+    })
+    assert(not failed_router:acquire("chat", nil, 12000))
+    assert(hud.active == "YES" and not failed_router:is_active())
+end
 
 print("PASS: HUD input ownership, timeout recovery, name Tab completion, caret End, Enter/Escape")
