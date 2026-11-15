@@ -634,6 +634,70 @@ assert(main_source:find('tonumber(list.scroll_top)', 1, true))
 assert(main_source:find('tonumber(list.client_height)', 1, true))
 assert(main_source:find('tonumber(list.scroll_height)', 1, true))
 
+-- VO can have an active ship while the navigation/PDA is open.
+-- Verify the extra native HUD visibility gate, not just in-flight status.
+local native_start = assert(main_source:find(
+    "local function native_ship_hud_visible()", 1, true))
+local native_end = assert(main_source:find(
+    "-- HUD_SHOW/HUD_HIDE remain primary", native_start, true))
+local script_compiler = loadstring or load
+local native_code = main_source:sub(native_start, native_end - 1)
+    .. "\nreturn native_ship_hud_visible"
+local native_visible = assert(script_compiler(native_code))()
+local old_hud = HUD
+HUD = {dlg = {visible = "YES"}}
+assert(native_visible())
+HUD.dlg.visible = "NO"
+assert(not native_visible())
+HUD.dlg.visible = false
+assert(not native_visible())
+HUD.dlg.visible = "YES"
+assert(native_visible())
+HUD.dlg.visible = nil
+assert(native_visible()) -- Legacy clients without the property fall back.
+HUD = old_hud
+
+-- Execute the actual sync_visibility() logic against a simulated PDA.
+-- The active-ship check remains true throughout the menu transition.
+local sync_start = assert(main_source:find(
+    "local function sync_visibility()", 1, true))
+local sync_end = assert(main_source:find(
+    "local lifecycle = {}", sync_start, true))
+local sync_code = [[
+return function(ui, router, is_flying, native_ship_hud_visible)
+    local user_wants_visible = true
+    local ship_hud_visible = true
+]] .. main_source:sub(sync_start, sync_end - 1)
+    .. "\nreturn sync_visibility\nend"
+local sync_factory = assert(script_compiler(sync_code))()
+local nav_is_open, hide_count, show_count, canceled_count = false, 0, 0, 0
+local mock_hud_ui = {
+    visible = true,
+    show = function(self) self.visible = true; show_count = show_count + 1 end,
+    hide = function(self) self.visible = false; hide_count = hide_count + 1 end,
+}
+local mock_input = {
+    active = true,
+    is_active = function(self) return self.active end,
+    cancel_all = function(self)
+        self.active = false
+        canceled_count = canceled_count + 1
+    end,
+}
+local sync_nav = sync_factory(mock_hud_ui, mock_input,
+    function() return true end, function() return not nav_is_open end)
+sync_nav()
+assert(mock_hud_ui.visible and hide_count == 0)
+nav_is_open = true
+sync_nav()
+assert(not mock_hud_ui.visible and hide_count == 1 and canceled_count == 1)
+sync_nav()
+assert(hide_count == 1 and canceled_count == 1) -- No repeated cleanup.
+nav_is_open = false
+sync_nav()
+assert(mock_hud_ui.visible and show_count == 2)
+assert(main_source:find("hud_visibility_timer:SetTimeout(125,", 1, true))
+
 -- Exercise actual preference serialization from main.lua without loading
 -- the whole in-game entry point. VO exposes gkini.ReadString/WriteString.
 local pref_begin = assert(main_source:find("local LAYOUT_SECTION =", 1, true))
