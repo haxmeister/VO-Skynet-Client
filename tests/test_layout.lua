@@ -96,8 +96,14 @@ local ui = UI.new({
     on_chat_focus = function() return true end,
 })
 assert(ui:mount(ctx, doc))
--- Normal flight mode is content-first, without visible window chrome.
-assert(nodes["skynet-header"].style.display == "none")
+-- Normal flight keeps its title + connection indicator, not the frame.
+assert(nodes["skynet-header"].style.display == "flex")
+assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
+assert(nodes["connection-status"].inner_rml:find("DISCONNECTED", 1, true))
+ui:set_connected(true)
+assert(nodes["connection-status"].inner_rml:find(">CONNECTED<", 1, true))
+ui:set_connected(false)
+assert(nodes["connection-status"].inner_rml:find(">DISCONNECTED<", 1, true))
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.72)")
@@ -226,13 +232,15 @@ assert(ui.geometry.chat == 280)
 local class_updates = nodes["skynet-panel"].class_updates
 ui:layout()
 assert(nodes["skynet-panel"].class_updates == class_updates)
-assert(nodes["chat-list"].style.height == "138px")
+assert(nodes["chat-list"].style.height == "113px")
 assert(nodes["chat-input"].style.height == nil) -- static RML style
 
 assert(ui:set_layout_editing(true))
 assert(ui.layout_editing)
--- The 25px header and strong frame return only in editing mode.
+-- The title and connection status stay visible; layout mode adds an
+-- outer border but NOT a rule beneath the header.
 assert(nodes["skynet-header"].style.display == "flex")
+assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "1px")
 assert(nodes["skynet-panel"].style["background-color"]
     == "rgba(7, 20, 36, 0.82)")
@@ -297,7 +305,8 @@ assert(ui.geometry.sightings >= 105)
 
 nodes["layout-done"]:dispatch("click")
 assert(not ui.layout_editing)
-assert(nodes["skynet-header"].style.display == "none")
+assert(nodes["skynet-header"].style.display == "flex")
+assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
@@ -315,4 +324,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: solid 1px splitter guides, hidden scrollbars, callable Timer, flood follow, resize")
+print("PASS: borderless Skynet title/status, orange heading layout, hidden scrollbars, flood follow, resize")
