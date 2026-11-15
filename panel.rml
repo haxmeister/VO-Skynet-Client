@@ -144,11 +144,7 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 #online-panel { width: 180px; }
 #online-list { white-space: nowrap; }
 .online-row { display: block; margin-bottom: 3px; }
-#chat-panel {
-    width: 290px;
-    /* Anchor the fade to the chat history, not to the whole HUD. */
-    position: relative;
-}
+#chat-panel { width: 290px; }
 #chat-list {
     overflow-y: scroll;
     word-break: break-word;
