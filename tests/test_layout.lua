@@ -59,9 +59,20 @@ function entry_class.new()
 end
 local saves = {}
 local focus = {}
+local scroll_timer = {}
+function scroll_timer:SetTimeout(ms, callback)
+    self.duration = ms
+    self.callback = callback
+    self.schedule_count = (self.schedule_count or 0) + 1
+end
+function scroll_timer:Kill()
+    self.callback = nil
+end
+
 local ui = UI.new({
     visible = true,
     text_entry_class = entry_class,
+    chat_scroll_timer = scroll_timer,
     save_geometry = function(g)
         saves[#saves + 1] = g
     end,
@@ -72,6 +83,46 @@ local ui = UI.new({
     on_chat_focus = function() return true end,
 })
 assert(ui:mount(ctx, doc))
+-- Initial mount may schedule a follow-to-bottom. Flush it before checking.
+assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
+scroll_timer.callback()
+assert(ui.chat_scroll_pending == false)
+assert(ui.chat_follow_bottom == true)
+
+-- A burst of new messages should scroll to the new measured scroll range,
+-- not the old scroll_height before RmlUi's asynchronous relayout.
+local list = nodes["chat-list"]
+list.client_height = 80
+list.scroll_height = 120
+ui:add_chat("TEST", "first")
+local scheduled = scroll_timer.schedule_count
+for i = 2, 40 do
+    ui:add_chat("TEST", "flood " .. i)
+end
+assert(scroll_timer.schedule_count == scheduled) -- one timer, not 40
+list.scroll_height = 520 -- simulate RmlUi recalculating content after render
+scroll_timer.callback()
+assert(list.scroll_top == 440)
+assert(ui.chat_scroll_pending == false)
+
+-- User intentionally scrolls upward: do not snap back on new messages.
+list.scroll_top = 100
+list:dispatch("scroll")
+assert(ui.chat_follow_bottom == false)
+list.scroll_height = 560
+ui:add_chat("TEST", "should stay at manually selected position")
+assert(list.scroll_top == 100)
+assert(ui.chat_scroll_pending == false)
+
+-- User returns to bottom: follow mode automatically re-engages.
+list.scroll_top = 480
+list:dispatch("scroll")
+assert(ui.chat_follow_bottom == true)
+ui:add_chat("TEST", "follow again")
+list.scroll_height = 680
+scroll_timer.callback()
+assert(list.scroll_top == 600)
+
 assert(ui.geometry.left == 190)
 assert(ui.geometry.width == 644)
 assert(ui.geometry.top == 635)
