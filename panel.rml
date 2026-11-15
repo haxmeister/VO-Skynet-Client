@@ -121,14 +121,19 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     width: 8px;
     height: 100%;
     min-width: 8px;
-    /* One visual separator, with an 8px drag hit area. */
+    /* This remains the unchanged 8px drag target. Draw the single line
+       using the 1px child rather than an alpha border: VO can make
+       translucent border colors disappear entirely. */
     background-color: transparent;
     border-width: 0px;
-    /* A very faint line stays in flight mode; the 8px drag target and
-       column geometry are unchanged. ui.lua strengthens it in edit mode. */
-    border-left-width: 1px;
-    border-color: rgba(56, 105, 132, 0.24);
     drag: drag;
+}
+.splitter-guide {
+    display: block;
+    width: 1px;
+    height: 100%;
+    background-color: #4c7188;
+    pointer-events: none;
 }
 .splitter:hover { background-color: transparent; }
 #skynet-panel.layout-edit .splitter:hover {
@@ -232,7 +237,7 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
         <div class="heading">ONLINE (<span id="online-count">0</span>)</div>
         <div id="online-list" class="scroller"></div>
       </div>
-      <div id="split-left" class="splitter"></div>
+      <div id="split-left" class="splitter"><div id="split-left-guide" class="splitter-guide"></div></div>
       <div id="chat-panel" class="section">
         <div class="heading">ALLIANCE CHAT</div>
         <div id="chat-list" class="scroller"></div>
@@ -240,7 +245,7 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
           <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
         </form>
       </div>
-      <div id="split-right" class="splitter"></div>
+      <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"></div></div>
       <div id="sightings-panel" class="section">
         <div class="heading">SIGHTINGS</div>
         <div id="sightings-list" class="scroller"></div>
