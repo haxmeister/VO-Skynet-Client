@@ -54,6 +54,7 @@ function UI.new(options)
     self.visible = options.visible ~= false
     self.connected = false
     self.chat_input_open = false
+    self.chat_draft = ""
     self.chat_listeners_bound = false
     self.chat_diagnostics = false
     self.chat_diagnostic_events = 0
@@ -200,8 +201,25 @@ function UI:bind_chat_input()
         end
     end
 
-    -- These do not log user text; only event names and key identifiers.
-    for _, kind in ipairs({"focus", "blur", "click", "textinput", "change"}) do
+    -- GetElementById() exposes an Element whose .value may be nil even
+    -- for a working form control. RmlUi's change event carries the live text
+    -- in event.parameters.value. Do not log the actual chat message.
+    input:AddEventListener("change", function(event)
+        if not self.chat_input_open then return end
+        local params = event and event.parameters
+        local value = params and params.value
+        if type(value) == "string" then
+            self.chat_draft = value
+            if self.chat_diagnostics then
+                print("Skynet RmlUi input: change captured, length=" .. #value)
+            end
+        elseif self.chat_diagnostics then
+            print("Skynet RmlUi input: change value type=" .. type(value))
+        end
+    end, false)
+
+    -- Other listeners are diagnostic only and do not log typed characters.
+    for _, kind in ipairs({"focus", "blur", "click", "textinput"}) do
         local diagnostic_kind = kind
         local ok_diagnostic, err = pcall(function()
             input:AddEventListener(diagnostic_kind, function()
@@ -240,7 +258,14 @@ function UI:bind_chat_input()
         form:AddEventListener("submit", function(event)
             trace("form-submit")
             stop(event)
-            self:submit_chat("form-submit")
+            -- The form submit event provides named input values directly.
+            local params = event and event.parameters
+            local message = params and params.message
+            if self.chat_diagnostics then
+                print("Skynet RmlUi input: submit message type=" .. type(message)
+                    .. (type(message) == "string" and (" length=" .. #message) or ""))
+            end
+            self:submit_chat("form-submit", message)
         end, false)
     end)
 
@@ -285,11 +310,14 @@ function UI:begin_chat()
         return true
     end
     self.chat_input_open = true
+    self.chat_draft = ""
     self.chat_diagnostic_events = 0
     form.style.display = "block"
-    local cleared, clear_err = pcall(function() input.value = "" end)
+    -- Clear the actual RmlUi form control, not the inaccessible .value
+    -- Lua property on the generic Element returned by GetElementById().
+    local cleared, clear_err = pcall(function() input:SetAttribute("value", "") end)
     if not cleared then
-        print("Skynet UI: failed to clear chat on open: " .. tostring(clear_err))
+        print("Skynet UI: failed to reset chat attribute on open: " .. tostring(clear_err))
     end
     if not self:notify_chat_focus(true) then
         self:cancel_chat("failed-handoff")
@@ -317,12 +345,13 @@ function UI:cancel_chat(reason)
         return
     end
     self.chat_input_open = false
+    self.chat_draft = ""
     print("Skynet UI: closing RmlUi chat: " .. tostring(reason or "cancel"))
     local form, input = self:node("chat-form"), self:node("chat-input")
     if input then
-        local cleared, clear_err = pcall(function() input.value = "" end)
+        local cleared, clear_err = pcall(function() input:SetAttribute("value", "") end)
         if not cleared then
-            print("Skynet UI: failed to clear chat on close: " .. tostring(clear_err))
+            print("Skynet UI: failed to reset chat attribute on close: " .. tostring(clear_err))
         end
         local blurred, blur_err = pcall(function() input:Blur() end)
         if not blurred then
@@ -349,10 +378,9 @@ function UI:deliver_chat(message)
     return true
 end
 
-function UI:submit_chat(source)
+function UI:submit_chat(source, submitted)
     if not self.chat_input_open then return false end
-    local input = self:node("chat-input")
-    local message = input and tostring(input.value or "") or ""
+    local message = type(submitted) == "string" and submitted or self.chat_draft
     print("Skynet UI: RmlUi submit via " .. tostring(source or "unknown")
         .. "; text length=" .. #message)
     -- Deliver before restoring the IUP HUD, so its show event can't interrupt
