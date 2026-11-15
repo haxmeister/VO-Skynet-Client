@@ -39,9 +39,22 @@ local ids = {
 local nodes = {}
 for _, id in ipairs(ids) do nodes[id] = element(id) end
 nodes["chat-form"].style.display = "none"
+nodes["skynet-chat-tail"] = element("skynet-chat-tail")
+function nodes["skynet-chat-tail"]:ScrollIntoView(align_with_top)
+    assert(align_with_top == false)
+    self.calls = (self.calls or 0) + 1
+    local list = nodes["chat-list"]
+    list.scroll_top = math.max(0, list.scroll_height - list.client_height)
+end
 
 local doc = {}
-function doc:GetElementById(id) return nodes[id] end
+function doc:GetElementById(id)
+    if id == "skynet-chat-tail" and not
+        nodes["chat-list"].inner_rml:find('id="skynet-chat-tail"', 1, true) then
+        return nil
+    end
+    return nodes[id]
+end
 function doc:Show() self.visible = true end
 function doc:Hide() self.visible = false end
 function doc:Close() self.closed = true end
@@ -69,6 +82,15 @@ function scroll_timer:Kill()
     self.callback = nil
 end
 
+-- The follow manager makes three passes to allow RmlUi's layout to settle.
+local function flush_follow()
+    for _ = 1, 3 do
+        local fn = scroll_timer.callback
+        assert(type(fn) == "function")
+        fn()
+    end
+end
+
 local ui = UI.new({
     visible = true,
     text_entry_class = entry_class,
@@ -86,8 +108,9 @@ assert(ui:mount(ctx, doc))
 assert(nodes["resize-grip"].style.display == "none")
 -- Initial mount may schedule a follow-to-bottom. Flush it before checking.
 assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
-scroll_timer.callback()
+flush_follow()
 assert(ui.chat_scroll_pending == false)
+assert(nodes["skynet-chat-tail"].calls == 3)
 assert(ui.chat_follow_bottom == true)
 
 -- A burst of new messages should scroll to the new measured scroll range,
@@ -111,12 +134,13 @@ for i = 2, 40 do
 end
 ui:add_chat_batch(messages)
 assert(renders == 1)
+assert(list.inner_rml:find('id="skynet-chat-tail"', 1, true))
 assert(scroll_timer.schedule_count == scheduled) -- one pending scroll
 list.scroll_height = 520 -- simulate RmlUi relayout after DOM replacement
 list.scroll_top = 0
 list:dispatch("scroll") -- synthetic event from reflow is NOT user intent
 assert(ui.chat_follow_bottom == true)
-scroll_timer.callback()
+flush_follow()
 assert(list.scroll_top == 440)
 assert(ui.chat_scroll_pending == false)
 
@@ -134,7 +158,7 @@ assert(ui.chat_scroll_pending == false)
 ui:follow_chat()
 assert(ui.chat_follow_bottom == true)
 list.scroll_height = 600
-scroll_timer.callback()
+flush_follow()
 assert(list.scroll_top == 520)
 
 -- User scrolls up and returns to bottom: follow mode automatically re-engages.
@@ -148,7 +172,7 @@ list:dispatch("scroll")
 assert(ui.chat_follow_bottom == true)
 ui:add_chat("TEST", "follow again")
 list.scroll_height = 680
-scroll_timer.callback()
+flush_follow()
 assert(list.scroll_top == 600)
 
 assert(ui.geometry.left == 190)
@@ -229,4 +253,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: panel resize grip toggle, flood batch scroll, programmatic vs manual scroll, dividers, viewport clamp")
+print("PASS: bottom anchor ScrollIntoView, 3-pass follow, flood batch, manual scroll, dividers, resize")
