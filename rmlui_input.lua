@@ -26,6 +26,9 @@ function Router.new(options)
             gkinterface.HideMouse()
         end
     end
+    -- Never restore flight controls while the PDA/menu owns input.
+    -- Default remains normal restoration for independent router users.
+    self.should_restore_flight = options.should_restore_flight
     self.new_timer = options.new_timer or function() return Timer() end
     -- 0 disables the watchdog. Each owner can override it when acquiring.
     self.default_timeout_ms = options.timeout_ms == nil
@@ -66,11 +69,20 @@ function Router:_restore()
         end
     end
     if restore_mode then
-        local ok, err = pcall(self.set_input_mode, true)
-        if not ok then
-            print("Skynet input: FAILED to restore flight mode: " .. tostring(err))
-        else
-            pcall(self.hide_mouse)
+        local restore_flight = true
+        if type(self.should_restore_flight) == "function" then
+            local ok, allowed = pcall(self.should_restore_flight)
+            -- An uncertain HUD state must not force flight-mode input
+            -- over the PDA's own input handling.
+            restore_flight = ok and allowed == true
+        end
+        if restore_flight then
+            local ok, err = pcall(self.set_input_mode, true)
+            if not ok then
+                print("Skynet input: FAILED to restore flight mode: " .. tostring(err))
+            else
+                pcall(self.hide_mouse)
+            end
         end
     end
 end
