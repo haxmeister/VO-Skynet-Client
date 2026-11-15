@@ -275,12 +275,12 @@ RegisterUserCommand("skynetui", function(_, args)
             ui:add_chat_batch(messages)
             ui:follow_chat(true) -- Log actual scroll metrics on 3 passes.
 
-            -- Fill sightings with six different ages (0% to 95% of TTL)
-            -- so the progressive opacity is immediately visible in-game.
-            -- Each refresh keeps aging and eventually removes these rows.
+            -- Sample the entire lifespan, especially the last 15%:
+            -- three fully visible rows followed by three fading rows.
+            -- Refreshes continue aging/removing these test sightings.
             local seen_now = os.time()
             local ttl = math.max(1, tonumber(ui.settings.sighting_ttl) or 60)
-            local phases = {0, 0.20, 0.40, 0.60, 0.80, 0.95}
+            local phases = {0, 0.70, 0.85, 0.90, 0.95, 0.98}
             for i, phase in ipairs(phases) do
                 local age = math.floor(ttl * phase)
                 ui:add_sighting("Fade-" .. i, "Vult", "B-8", seen_now - age)
