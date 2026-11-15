@@ -133,12 +133,32 @@ local function is_flying()
     return station_ok and in_station == false and ship_ok and active_ship == true
 end
 
+-- Being in flight is not enough: the navigation/PDA menu can open while
+-- PlayerInStation() is false and HasActiveShip() remains true.
+-- Check the actual native ship HUD, which becomes hidden for menus.
+local function native_ship_hud_visible()
+    if not HUD or not HUD.dlg then return true end
+    local ok, visible = pcall(function() return HUD.dlg.visible end)
+    if not ok or visible == nil then return true end
+    return visible == "YES" or visible == true
+end
+
+-- HUD_SHOW/HUD_HIDE remain primary; the HUD's VISIBLE property catches
+-- PDA transitions that do not emit those events to plugins.
+local ship_hud_visible = is_flying()
+
 -- Other RmlUi widgets can use the same input router with a different owner:
 -- router:acquire("settings", cancel_settings, 0)
 -- router:release("settings")
 -- The router holds HUD.dlg.active=NO while ANY owner is active.
 local router = InputRouter.new({
     timeout_ms = 0,
+    -- A PDA transition must NOT re-enable flight controls. VO will restore
+    -- its own flight mode when it returns to the ship HUD.
+    should_restore_flight = function()
+        return ship_hud_visible and is_flying()
+            and native_ship_hud_visible()
+    end,
     hide_mouse = function()
         if is_flying() and gkinterface
             and type(gkinterface.HideMouse) == "function" then
@@ -210,13 +230,20 @@ local function open_chat_prompt()
     end
 end
 
--- HUD_SHOW is observed in game; getters handle in-flight ReloadInterface().
-local ship_hud_visible = is_flying()
+-- Show only in the actual flight HUD, never over the PDA/navigation menu.
+-- The visible attribute also covers clients where PDA transitions do not
+-- generate HUD_HIDE. Check before restoring native flight input.
 local function sync_visibility()
-    if user_wants_visible and is_flying() and ship_hud_visible then
+    local hud_visible = native_ship_hud_visible()
+    local show = user_wants_visible and is_flying()
+        and ship_hud_visible and hud_visible
+    if show then
         ui:show()
     else
-        ui:hide() -- cancel_chat releases our input ownership if necessary.
+        if router:is_active() and (not ship_hud_visible or not hud_visible) then
+            router:cancel_all("ship-hud-not-visible")
+        end
+        if ui.visible then ui:hide() end
     end
 end
 
@@ -268,6 +295,16 @@ local function refresh()
     ticker:SetTimeout(1000, refresh)
 end
 ticker:SetTimeout(1000, refresh)
+
+-- The navigation/PDA can open without a plugin-visible HUD_HIDE event.
+-- Poll only HUD visibility (not the full UI layout) so the Skynet RmlUi
+-- document releases the menu promptly instead of obscuring its controls.
+local hud_visibility_timer = Timer()
+local function check_hud_visibility()
+    sync_visibility()
+    hud_visibility_timer:SetTimeout(125, check_hud_visibility)
+end
+hud_visibility_timer:SetTimeout(125, check_hud_visibility)
 
 -- Shift+A always opens our inline RmlUi input unless native fallback selected.
 local function activate_chat()
