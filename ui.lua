@@ -219,9 +219,9 @@ function UI:layout()
     panel.style.width = px(g.width)
     panel.style.height = px(g.height)
 
-    -- Window chrome is shown only during /skynetui layout. Keep the HUD
-    -- background restrained in flight: the VO client already appears very
-    -- transparent, so don't reduce contrast further than necessary.
+    -- Window chrome is shown only during /skynetui layout. The outer
+    -- shell stays clear; each content section and the compact SKYNET status
+    -- tab share one stronger translucent fill defined in panel.rml.
     -- RmlUi's style proxy uses RCSS property names for hyphenated keys.
     local editing = self.layout_editing
     if self.layout_chrome_applied ~= editing then
@@ -253,8 +253,9 @@ function UI:layout()
         header.style.display = "flex"
         header.style["border-bottom-width"] = "0px"
     end
-    panel.style["background-color"] = editing
-        and "rgba(7, 20, 36, 0.82)" or "rgba(7, 20, 36, 0.72)"
+    -- Do not double-tint the tab and columns with an underlying panel
+    -- fill. The outer frame remains useful in layout mode.
+    panel.style["background-color"] = "transparent"
     panel.style["border-width"] = editing and "1px" or "0px"
     panel.style["border-color"] = editing and "#3f7799" or "transparent"
 
