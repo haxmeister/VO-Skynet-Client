@@ -55,6 +55,8 @@ function UI.new(options)
     self.connected = false
     self.chat_input_open = false
     self.chat_listeners_bound = false
+    self.chat_diagnostics = false
+    self.chat_diagnostic_events = 0
     self.on_chat_submit = options.on_chat_submit
     self.on_chat_focus = options.on_chat_focus
     self.online = {}
@@ -163,6 +165,11 @@ function UI:notify_chat_focus(open)
     return result ~= false
 end
 
+function UI:set_chat_diagnostics(enabled)
+    self.chat_diagnostics = not not enabled
+    self.chat_diagnostic_events = 0
+end
+
 -- The RML form handles Enter; keydown handles Escape and is also an Enter
 -- fallback. Close before invoking a callback to prevent duplicate sends.
 function UI:bind_chat_input()
@@ -175,6 +182,29 @@ function UI:bind_chat_input()
     local enter = (key_ids and key_ids.KI_RETURN) or 72
     local num_enter = (key_ids and key_ids.KI_NUMPADENTER) or 61
 
+    local function trace(kind, extra)
+        if not self.chat_diagnostics or not self.chat_input_open then return end
+        self.chat_diagnostic_events = self.chat_diagnostic_events + 1
+        if self.chat_diagnostic_events <= 30 then
+            print("Skynet RmlUi input: event=" .. kind
+                .. (extra and (" value=" .. tostring(extra)) or ""))
+        end
+    end
+
+    -- Diagnostic listeners are optional, never required for chat to open.
+    for _, kind in ipairs({"focus", "blur", "click", "textinput", "change"}) do
+        local diagnostic_kind = kind
+        local ok_diagnostic, err = pcall(function()
+            input:AddEventListener(diagnostic_kind, function()
+                trace(diagnostic_kind)
+            end, false)
+        end)
+        if not ok_diagnostic then
+            print("Skynet RmlUi input: cannot register "
+                .. diagnostic_kind .. " diagnostic: " .. tostring(err))
+        end
+    end
+
     local ok_form, form_err = pcall(function()
         form:AddEventListener("submit", function(event)
             self:submit_chat()
@@ -185,6 +215,7 @@ function UI:bind_chat_input()
         input:AddEventListener("keydown", function(event)
             if not self.chat_input_open then return end
             local key = event.parameters and event.parameters.key_identifier
+            trace("keydown", key)
             if key == esc then
                 event:StopPropagation()
                 self:cancel_chat()
@@ -208,6 +239,7 @@ function UI:begin_chat()
     if not form or not input then return false end
     if self.chat_input_open then return true end
     self.chat_input_open = true
+    self.chat_diagnostic_events = 0
     form.style.display = "block"
     input.value = ""
     -- Switch VO out of flight-input mode before asking RmlUi for focus.
@@ -221,6 +253,10 @@ function UI:begin_chat()
         print("Skynet UI: cannot focus RmlUi chat input: " .. tostring(err))
         self:cancel_chat()
         return false
+    end
+    if self.chat_diagnostics then
+        print("Skynet RmlUi input: Focus() called successfully; "
+            .. "waiting for text, focus, click, or keydown events")
     end
     return true
 end
