@@ -248,15 +248,21 @@ function UI:layout()
         end
     end
     local header = self:node("skynet-header")
-    if header then header.style.display = editing and "flex" or "none" end
+    -- Keep SKYNET and its actual connection state visible while flying.
+    -- The title row has no divider line, even while editing the layout.
+    if header then
+        header.style.display = "flex"
+        header.style["border-bottom-width"] = "0px"
+    end
     panel.style["background-color"] = editing
         and "rgba(7, 20, 36, 0.82)" or "rgba(7, 20, 36, 0.72)"
     panel.style["border-width"] = editing and "1px" or "0px"
     panel.style["border-color"] = editing and "#3f7799" or "transparent"
 
-    -- A hidden header must not leave a 25px blank strip in normal flight.
+    -- The borderless title row is present in both modes. Only the outer
+    -- window border (visible in layout mode) changes the content height.
     -- The geometry still describes the same outer window rectangle.
-    local header_height = editing and HEADER_HEIGHT or 0
+    local header_height = HEADER_HEIGHT
     local border_allowance = editing and 2 or 0
 
     -- Give both the column row and each list its own *definite* height.
