@@ -27,13 +27,9 @@ The original clients at [skynet-client](https://github.com/haxmeister/skynet-cli
 
 We use that proven original design again, **not** the separate IUP dialog or the currently non-functional inline RmlUi input. VO's built-in prompt should provide its normal text focus, Enter and Escape handling.
 
-Use `/skynetui chat` or the dedicated command `skynetui_chat`; keep your existing key binding or choose one yourself:
+**The chat hotkey is hard-coded to `A`.** On plugin startup, `main.lua` runs `bind A skynetui_chat`, replacing any existing binding on the A key. Press **A** in flight to open VO's native chat prompt. The manual `/skynetui chat` command remains available.
 
-```text
-/bind F8 skynetui_chat
-```
-
-No key is bound automatically. The plugin registers an internal `skynetui_prompt` alias that runs `prompt`. The command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
+The plugin also registers an internal `skynetui_prompt` alias that runs `prompt`. The chat command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
 
 This is based on code from the older working Skynet clients, but the updated implementation still needs a current-client test: activate the hotkey, type a message, submit with Enter, cancel a second prompt with Escape, and verify flight controls resume normally. The non-working RmlUi input remains hidden for possible future use; VO's native `prompt` owns text entry.
 
