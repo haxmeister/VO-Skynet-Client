@@ -319,14 +319,14 @@ RegisterUserCommand("skynetui", function(_, args)
     sync_visibility()
 end)
 
--- Bind lowercase 'a' for the unshifted A key. In VO uppercase A means Shift+A.
+-- Preserve the original uppercase A (Shift+A) binding: this already worked.
 -- This deliberately replaces any existing binding for the A key.
 RegisterUserCommand("skynetui_chat", function()
     activate_chat()
 end)
 
 if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
-    local ok_bind, bind_err = pcall(gkinterface.GKProcessCommand, "bind a skynetui_chat")
+    local ok_bind, bind_err = pcall(gkinterface.GKProcessCommand, "bind A skynetui_chat")
     if not ok_bind then
         print("Skynet UI: cannot bind A to chat: " .. tostring(bind_err))
     end
