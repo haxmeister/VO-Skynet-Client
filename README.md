@@ -30,7 +30,7 @@ Place these repository files in `plugins/skynetui/`, so the plugin entry point i
 3. Type `lost` (after encountering a player called Lost Crow), press **Tab**, and continue typing. The caret should be after `Lost Crow`, not in its middle.
 4. Press **Escape** during another message. Flight controls should return.
 5. Enter `/skynetui layout`; mouse-drag the SKYNET title, two slim column dividers, and the bottom-right grip. Click **DONE** when finished.
-6. Use `/skynetui demo flood` to insert 40 long test messages. The chat must stay within the panel, scroll to the latest message, and retain its visible scrollbar. While chatting, the input row must stay visible beneath the history.
+6. Use `/skynetui demo flood` to insert 40 long test messages. The chat must stay within the panel and scroll to the latest message. The scrollbar should be invisible during normal flight and reappear in `/skynetui layout`. While chatting, the input row must stay visible beneath the history.
 7. Test docking/undocking, hiding the panel, and `ReloadInterface()` while the chat field is open.
 
 Console commands:
