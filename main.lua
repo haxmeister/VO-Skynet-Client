@@ -286,7 +286,7 @@ local function activate_chat()
     end
 end
 
--- /skynetui hide|show|demo [flood]|chat|layout|resetlayout|input rml|native
+-- /skynetui hide|show|demo [flood|scroll|scrollcheck]|chat|layout|resetlayout|input rml|native
 RegisterUserCommand("skynetui", function(_, args)
     local command = args and args[1] or "show"
     if command == "hide" then
@@ -319,6 +319,51 @@ RegisterUserCommand("skynetui", function(_, args)
             end
             print("Skynet UI: added 40 chat messages and 6 aging sightings;"
                 .. " following newest chat")
+        elseif args and args[2] == "scroll" then
+            -- Force both non-chat columns to overflow without changing the
+            -- player's saved geometry. The demo sightings naturally expire
+            -- on the usual 60-second schedule; rerun to refresh them.
+            local names = {}
+            for i = 1, 32 do
+                names[i] = "TestPilot-" .. string.format("%02d", i)
+            end
+            ui:replace_online(names)
+            local seen_now = os.time()
+            for i = 1, 24 do
+                ui:add_sighting("TestSight-" .. string.format("%02d", i),
+                    "Vult", "B-8", seen_now)
+            end
+            print("Skynet UI: scroll test loaded 32 online pilots and"
+                .. " 24 fresh sightings (expire after usual TTL)."
+                .. " Open /skynetui layout for mouse wheel and scrollbars;"
+                .. " use /skynetui demo scrollcheck to see scroll positions.")
+        elseif args and args[2] == "scrollcheck" then
+            -- Query real RmlUi scroll metrics rather than inferring
+            -- scrolling from the number of generated demo entries.
+            for _, spec in ipairs({
+                {"online", "online-list"},
+                {"sightings", "sightings-list"},
+            }) do
+                local list = ui:node(spec[2])
+                if list then
+                    local ok, top, client, extent = pcall(function()
+                        return tonumber(list.scroll_top),
+                            tonumber(list.client_height),
+                            tonumber(list.scroll_height)
+                    end)
+                    if ok and top and client and extent then
+                        print("Skynet UI: " .. spec[1]
+                            .. " scroll_top=" .. tostring(top)
+                            .. " viewport=" .. tostring(client)
+                            .. " content=" .. tostring(extent)
+                            .. " max=" .. tostring(math.max(0,
+                                extent - client)))
+                    else
+                        print("Skynet UI: " .. spec[1]
+                            .. " scroll metrics unavailable")
+                    end
+                end
+            end
         else
             ui:add_chat("Raven", "New demo message.")
             ui:add_sighting("Drake", "Vult", "Odia M-14")
