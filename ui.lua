@@ -65,6 +65,13 @@ function UI.new(options)
     self.on_chat_focus = options.on_chat_focus
     self.text_entry_class = options.text_entry_class
     self.chat_entry = nil
+    -- Follow fresh messages until the user scrolls away from the bottom.
+    -- A delayed scroll is needed because RmlUi lays out inner_rml after it
+    -- has been assigned, so scroll_height may still be the OLD value.
+    self.chat_follow_bottom = true
+    self.chat_scroll_pending = false
+    self.chat_scroll_applying = false
+    self.chat_scroll_timer = options.chat_scroll_timer
     self.load_geometry = options.load_geometry
     self.save_geometry = options.save_geometry
     self.on_layout_focus = options.on_layout_focus
@@ -99,6 +106,7 @@ function UI:mount(context, document)
     if not self:bind_layout_controls() then
         return false, "window controls initialization failed"
     end
+    self:bind_chat_scroll()
     if self.visible then
         document:Show()
     else
@@ -429,6 +437,12 @@ function UI:unmount()
     end
     self.chat_listeners_bound = false
     self.chat_entry = nil
+    self.chat_scroll_pending = false
+    if self.chat_scroll_timer then
+        pcall(function() self.chat_scroll_timer:Kill() end)
+    end
+    self.chat_follow_bottom = true
+    self.chat_scroll_bound = false
     self.layout_controls_bound = false
 end
 
@@ -697,13 +711,83 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
+-- RmlUi computes the new scroll range during a later layout pass.
+-- Scrolling immediately after assigning inner_rml uses the *old* range.
+-- Keep a single pending timer even when many messages arrive in one tick.
+function UI:scroll_chat_to_bottom()
+    local node = self:node("chat-list")
+    if not node or not self.chat_follow_bottom then return end
+    self.chat_scroll_applying = true
+    local last = node.last_child
+    local ok = false
+    if last then
+        ok = pcall(function() last:ScrollIntoView(false) end)
+    end
+    -- ScrollIntoView() is documented in RmlUi's Lua Element API. Keep
+    -- scroll_top as a fallback in case the embedded VO binding differs.
+    if not ok then
+        pcall(function()
+            local height = tonumber(node.scroll_height) or 0
+            local client = tonumber(node.client_height) or 0
+            node.scroll_top = math.max(0, height - client)
+        end)
+    end
+    self.chat_scroll_applying = false
+end
+
+function UI:schedule_chat_follow()
+    if not self.chat_follow_bottom or self.chat_scroll_pending then return end
+    if not self.chat_scroll_timer then
+        if type(Timer) ~= "function" then
+            -- Tests / unusual environments without VO timers can still
+            -- perform the immediate best-effort scroll.
+            self:scroll_chat_to_bottom()
+            return
+        end
+        self.chat_scroll_timer = Timer()
+    end
+    self.chat_scroll_pending = true
+    local ok, err = pcall(function()
+        self.chat_scroll_timer:SetTimeout(40, function()
+            self.chat_scroll_pending = false
+            if self.document and self.visible and self.chat_follow_bottom then
+                self:scroll_chat_to_bottom()
+            end
+        end)
+    end)
+    if not ok then
+        self.chat_scroll_pending = false
+        print("Skynet UI: cannot schedule chat autoscroll: " .. tostring(err))
+        self:scroll_chat_to_bottom()
+    end
+end
+
+-- A user who scrolls up should be able to read earlier chat undisturbed.
+-- Scrolling to the bottom again re-enables follow mode.
+function UI:bind_chat_scroll()
+    if self.chat_scroll_bound then return true end
+    local node = self:node("chat-list")
+    if not node then return false end
+    local ok, err = pcall(function()
+        node:AddEventListener("scroll", function()
+            if self.chat_scroll_applying or self.chat_scroll_pending then return end
+            local top = tonumber(node.scroll_top) or 0
+            local visible = tonumber(node.client_height) or 0
+            local extent = tonumber(node.scroll_height) or 0
+            self.chat_follow_bottom = top + visible >= extent - 8
+        end, false)
+    end)
+    if not ok then
+        print("Skynet UI: cannot bind chat scroll listener: " .. tostring(err))
+        return false
+    end
+    self.chat_scroll_bound = true
+    return true
+end
+
 function UI:render_chat()
     local node = self:node("chat-list")
     if not node then return end
-    local scroll_top = tonumber(node.scroll_top) or 0
-    local client_height = tonumber(node.client_height) or 0
-    local scroll_height = tonumber(node.scroll_height) or 0
-    local autoscroll = scroll_top + client_height >= scroll_height - 8
     local output = {}
     for _, entry in ipairs(self.chat) do
         output[#output + 1] = '<div class="chat-row">'
@@ -711,7 +795,11 @@ function UI:render_chat()
             .. ' ' .. escape(entry.message) .. '</div>'
     end
     node.inner_rml = table.concat(output)
-    if autoscroll then node.scroll_top = node.scroll_height end
+    if self.chat_follow_bottom then
+        -- Immediate best effort followed by a layout-aware deferred attempt.
+        self:scroll_chat_to_bottom()
+        self:schedule_chat_follow()
+    end
 end
 
 function UI:render_sightings()
