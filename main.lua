@@ -77,7 +77,16 @@ local function close_native_chat(submit)
     if native_chat_dialog then
         local ok_hide, hide_err = pcall(HideDialog, native_chat_dialog)
         if not ok_hide then
-            print("Skynet UI: cannot hide chat dialog: " .. tostring(hide_err))
+            print("Skynet UI: HideDialog failed: " .. tostring(hide_err))
+        end
+        -- Guard against an IUP dialog remaining mapped when the wrapper fails.
+        if not ok_hide or native_chat_dialog.visible == "YES" then
+            local ok_fallback, fallback_err = pcall(function()
+                native_chat_dialog:hide()
+            end)
+            if not ok_fallback then
+                print("Skynet UI: direct dialog hide failed: " .. tostring(fallback_err))
+            end
         end
     end
     if submit then
@@ -103,10 +112,18 @@ local function open_native_chat()
             size = "340x",
             expand = "HORIZONTAL",
         }
+        local send_button = iup.button { title = "Send", size = "64x" }
+        local cancel_button = iup.button { title = "Cancel", size = "64x" }
         local dialog = iup.dialog {
             iup.vbox {
                 iup.label { title = "Skynet alliance chat" },
                 input,
+                iup.hbox {
+                    iup.fill {},
+                    send_button,
+                    cancel_button,
+                    gap = "6",
+                },
                 margin = "8x8",
                 gap = "5",
             },
@@ -114,16 +131,18 @@ local function open_native_chat()
             resize = "NO",
             maxbox = "NO",
             minbox = "NO",
+            -- IUP reserves Enter/Escape for DEFAULTENTER/DEFAULTESC.
+            -- These attributes refer directly to the buttons.
+            defaultenter = send_button,
+            defaultesc = cancel_button,
         }
-        -- IUP receives keyboard input while a native dialog has focus.
-        function input:k_any(key)
-            if key == 13 or key == iup.K_CR then
-                close_native_chat(true)
-                return iup.IGNORE
-            elseif key == 27 or key == iup.K_ESC then
-                close_native_chat(false)
-                return iup.IGNORE
-            end
+        function send_button:action()
+            close_native_chat(true)
+            return iup.DEFAULT
+        end
+        function cancel_button:action()
+            close_native_chat(false)
+            return iup.DEFAULT
         end
         function dialog:close_cb()
             close_native_chat(false)
@@ -211,13 +230,15 @@ ticker:SetTimeout(1000, refresh)
 
 -- Do not bind a key automatically: the player should choose a free key.
 local function toggle_chat()
-    sync_visibility()
-    if not ui.visible then return end
+    -- The native dialog may hide the ship HUD, so close it BEFORE
+    -- checking the HUD's visibility. Otherwise the hotkey cannot rescue it.
     if native_chat_open then
         close_native_chat(false)
-    else
-        open_native_chat()
+        return
     end
+    sync_visibility()
+    if not ui.visible then return end
+    open_native_chat()
 end
 
 -- /skynetui hide|show|demo|chat
@@ -232,6 +253,9 @@ RegisterUserCommand("skynetui", function(_, args)
     elseif command == "chat" then
         toggle_chat()
         return
+    elseif command == "close" then
+        close_native_chat(false)
+        return
     else
         user_wants_visible = true
     end
@@ -242,5 +266,9 @@ end)
 RegisterUserCommand("skynetui_chat", function()
     toggle_chat()
 end)
+-- An independent escape hatch even if VO hides the ship HUD for the dialog.
+RegisterUserCommand("skynetui_close", function()
+    close_native_chat(false)
+end)
 
-print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat")
+print("Skynet UI prototype loaded; /skynetui hide|show|demo|chat|close")
