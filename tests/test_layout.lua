@@ -40,7 +40,8 @@ local nodes = {}
 for _, id in ipairs(ids) do nodes[id] = element(id) end
 nodes["chat-form"].style.display = "none"
 nodes["skynet-chat-tail"] = element("skynet-chat-tail")
-function nodes["skynet-chat-tail"]:ScrollIntoView(align_with_top)
+local tail = nodes["skynet-chat-tail"]
+function tail:ScrollIntoView(align_with_top)
     assert(align_with_top == false)
     self.calls = (self.calls or 0) + 1
     local list = nodes["chat-list"]
