@@ -35,7 +35,7 @@ end
 
 local ids = {
     "skynet-panel", "skynet-header", "skynet-tab", "skynet-identity",
-    "skynet-columns", "skynet-title",
+    "skynet-columns", "columns-top-fade", "columns-solid-fill", "skynet-title",
     "layout-done", "resize-grip",
     "online-panel", "online-list",
     "chat-panel", "chat-list", "chat-form", "chat-input", "chat-top-fade",
@@ -96,24 +96,41 @@ local ui = UI.new({
     end,
     on_chat_focus = function() return true end,
 })
--- A single tinted column-row background must fill the splitter gutters.
--- Do not also paint the .section children: that would double-stack alpha.
--- The SKYNET tab uses one smooth rounded top-right corner.
+-- The column row stays clear at its top and paints two backdrop children:
+-- a 37px transparent-to-navy gradient, then full 35%-transparent navy.
+-- A separate all-corners-rounded pill uses that same navy fill.
 local rml_file = assert(io.open("panel.rml", "r"))
 local rml_source = rml_file:read("*a")
 rml_file:close()
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
+local top_css = assert(rml_source:match("#columns%-top%-fade%s*{([^}]+)}"))
+local solid_css = assert(rml_source:match("#columns%-solid%-fill%s*{([^}]+)}"))
 -- 35% transparency means 65% opacity: alpha=166/255 in RmlUi.
 local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
-assert(row_css:find(shared_fill, 1, true))
+assert(solid_css:find(shared_fill, 1, true))
+assert(row_css:find("background-color: transparent;", 1, true))
 assert(section_css:find("background-color: transparent;", 1, true))
+assert(row_css:find("position: relative;", 1, true))
 assert(row_css:find("padding: 0px 3px 4px;", 1, true))
-assert(tab_css:find("border-radius: 5px 14px 0px 0px;", 1, true))
+assert(tab_css:find("border-radius: 11px;", 1, true))
+assert(tab_css:find("height: 22px;", 1, true))
 assert(not rml_source:find("tab-angle", 1, true))
 assert(rml_source:find('id="skynet-tab"', 1, true))
+assert(top_css:find("height: 37px;", 1, true))
+assert(top_css:find("pointer-events: none;", 1, true))
+assert(top_css:find("decorator: vertical-gradient(", 1, true))
+assert(top_css:find("rgba(7, 20, 36, 0)", 1, true))
+assert(top_css:find("rgba(7, 20, 36, 166)", 1, true))
+assert(solid_css:find("top: 37px;", 1, true))
+assert(solid_css:find("pointer-events: none;", 1, true))
+-- Draw both backdrops first so interactive columns and splitters stay above.
+local top_index = assert(rml_source:find('<div id="columns-top-fade">', 1, true))
+local fill_index = assert(rml_source:find('<div id="columns-solid-fill">', 1, true))
+local online_index = assert(rml_source:find('<div id="online-panel"', 1, true))
+assert(top_index < fill_index and fill_index < online_index)
 -- A vertex-colored overlay works without a shader-based text mask.
 -- It must not intercept the chat's wheel or drag events.
 local fade_css = assert(rml_source:match("#chat%-top%-fade%s*{([^}]+)}"))
@@ -152,6 +169,8 @@ assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
 assert(nodes["chat-top-fade"].style.display == "none")
 assert(nodes["chat-top-fade"].style.width == "259px")
+-- 166px panel - 25px header - 37px gradient = 104px solid fill.
+assert(nodes["columns-solid-fill"].style.height == "104px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
@@ -308,6 +327,7 @@ assert(nodes["skynet-header"].style.display == "flex")
 assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "1px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
+assert(nodes["columns-solid-fill"].style.height == "102px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
@@ -482,4 +502,4 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: smooth millisecond sighting fade, stable DOM, age labels, rounded tab and chat fade")
+print("PASS: detached pill, transparent-to-navy column top, geometry, chat/sighting fade")
