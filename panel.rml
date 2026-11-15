@@ -149,29 +149,23 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     /* Anchor the fade to the chat history, not to the whole HUD. */
     position: relative;
 }
-#chat-top-fade {
-    display: none;
-    position: absolute;
-    /* Begin at the actual top edge of the text viewport. The prior
-       11px inset left the first chat line unfaded; extend the band
-       downward instead to preserve the soft vanishing distance. */
-    top: 0px;
-    left: 5px;
-    height: 37px;
-    /* ui.lua gives this an exact width, stopping before the scrollbar. */
-    width: 250px;
-    pointer-events: none;
-    /* Draw OVER the list, blending text into the navy as it exits at top.
-       RmlUi's vertical-gradient decorator uses vertex colors and does
-       not require advanced shader/mask support. */
-    decorator: vertical-gradient(
-        rgba(7, 20, 36, 240) rgba(7, 20, 36, 0)
-    );
-}
 #chat-list {
     overflow-y: scroll;
     word-break: break-word;
     white-space: normal;
+}
+/* Fade the chat *pixels* instead of drawing a navy rectangle above them.
+   The masked viewport remains transparent and the shared column backdrop
+   shows through. With no mask support in the VO renderer, this simply
+   degrades to readable text; never reintroduce a dark overlay.
+   Only enable while the chat has scrolled, via UI:update_chat_fade(). */
+#chat-list.chat-faded {
+    mask-image: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0px,
+        rgba(255, 255, 255, 255) 37px,
+        rgba(255, 255, 255, 255) 100%
+    );
 }
 .chat-row { display: block; margin-bottom: 3px; white-space: normal; word-break: break-word; }
 #sightings-panel { width: 150px; }
@@ -322,7 +316,6 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
         <form id="chat-form">
           <input id="chat-input" type="text" name="message" maxlength="300" autocomplete="off" />
         </form>
-        <div id="chat-top-fade"></div>
       </div>
       <div id="split-right" class="splitter"><div id="split-right-guide" class="splitter-guide"></div></div>
       <div id="sightings-panel" class="section">
