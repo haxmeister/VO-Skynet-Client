@@ -69,11 +69,13 @@ end
 local native_chat_open = false
 local native_chat_dialog = nil
 local native_chat_input = nil
+local native_chat_opened_at = nil
 
 local function close_native_chat(submit)
     if not native_chat_open then return end
     local message = native_chat_input and tostring(native_chat_input.value or "") or ""
     native_chat_open = false
+    native_chat_opened_at = nil
     if native_chat_dialog then
         local ok_hide, hide_err = pcall(HideDialog, native_chat_dialog)
         if not ok_hide then
@@ -116,7 +118,7 @@ local function open_native_chat()
         local cancel_button = iup.button { title = "Cancel", size = "64x" }
         local dialog = iup.dialog {
             iup.vbox {
-                iup.label { title = "Skynet alliance chat" },
+                iup.label { title = "Skynet alliance chat (auto-cancels after 2 minutes)" },
                 input,
                 iup.hbox {
                     iup.fill {},
@@ -158,6 +160,7 @@ local function open_native_chat()
         return false
     end
     native_chat_open = true
+    native_chat_opened_at = os.time()
     if type(iup.SetFocus) == "function" then
         local focused, focus_err = pcall(iup.SetFocus, native_chat_input)
         if not focused then
@@ -224,6 +227,12 @@ local ticker = Timer()
 local function refresh()
     ui:tick()
     sync_visibility()
+    -- Last-resort safety escape if the native IUP callbacks are broken too.
+    if native_chat_open and native_chat_opened_at
+        and os.time() - native_chat_opened_at >= 120 then
+        print("Skynet UI: native chat safety timeout; canceling input")
+        close_native_chat(false)
+    end
     ticker:SetTimeout(1000, refresh)
 end
 ticker:SetTimeout(1000, refresh)
