@@ -75,6 +75,7 @@ function UI.new(options)
     -- Only genuine mouse input may disable following new chat messages.
     self.chat_scroll_user_input = false
     self.chat_scroll_mouse_down = false
+    self.chat_scroll_trace = false
     self.chat_scroll_timer = options.chat_scroll_timer
     self.load_geometry = options.load_geometry
     self.save_geometry = options.save_geometry
@@ -448,6 +449,7 @@ function UI:unmount()
     self.chat_scroll_pending = false
     self.chat_scroll_user_input = false
     self.chat_scroll_mouse_down = false
+    self.chat_scroll_trace = false
     if self.chat_scroll_timer then
         pcall(function() self.chat_scroll_timer:Kill() end)
     end
@@ -682,8 +684,11 @@ end
 
 -- This is useful for explicitly requested jump-to-live actions, including
 -- /skynetui demo flood. Ordinary incoming messages respect manual scroll-up.
-function UI:follow_chat()
+function UI:follow_chat(trace)
     self.chat_follow_bottom = true
+    -- Enable a small amount of measurements for the flood test only.
+    -- No chat text or player names are logged.
+    if trace then self.chat_scroll_trace = true end
     self:schedule_chat_follow()
 end
 
@@ -747,47 +752,101 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
--- RmlUi computes the new scroll range during a later layout pass.
--- Scrolling immediately after assigning inner_rml uses the *old* range.
--- Keep a single pending timer even when many messages arrive in one tick.
-function UI:scroll_chat_to_bottom()
+-- In this VO build, reading the scroll range after inner_rml replacement
+-- can still return an OLD value, particularly for large batched messages.
+-- A last-element anchor avoids calculating the destination from the range.
+function UI:scroll_chat_to_bottom(pass)
     local node = self:node("chat-list")
     if not node or not self.chat_follow_bottom then return end
+
+    local function measures()
+        local ok, top, client, height = pcall(function()
+            return tonumber(node.scroll_top), tonumber(node.client_height),
+                tonumber(node.scroll_height)
+        end)
+        if not ok then return "unavailable" end
+        return tostring(top) .. "/" .. tostring(client) .. "/" .. tostring(height)
+    end
+
+    local before = self.chat_scroll_trace and measures() or nil
     self.chat_scroll_applying = true
-    -- Always set scroll_top directly after relayout: the last child can
-    -- otherwise be RmlUi's generated scrollbar rather than a chat row.
-    pcall(function()
-        local height = tonumber(node.scroll_height) or 0
-        local client = tonumber(node.client_height) or 0
-        node.scroll_top = math.max(0, height - client)
-    end)
+
+    local anchor, ok_anchor = self:node("skynet-chat-tail"), false
+    if anchor then
+        ok_anchor = pcall(function() anchor:ScrollIntoView(false) end)
+    end
+
+    if not ok_anchor then
+        -- A missing anchor (or an older RmlUi Lua build) retains the
+        -- original numeric approach as a fallback.
+        pcall(function()
+            local height = tonumber(node.scroll_height) or 0
+            local client = tonumber(node.client_height) or 0
+            node.scroll_top = math.max(0, height - client)
+        end)
+    end
+
     self.chat_scroll_applying = false
+    if self.chat_scroll_trace then
+        print("Skynet UI: chat follow pass=" .. tostring(pass)
+            .. " anchor=" .. tostring(anchor ~= nil)
+            .. " into_view=" .. tostring(ok_anchor)
+            .. " before=" .. tostring(before)
+            .. " after=" .. measures())
+    end
 end
 
 function UI:schedule_chat_follow()
     if not self.chat_follow_bottom or self.chat_scroll_pending then return end
     if not self.chat_scroll_timer then
         if type(Timer) ~= "function" then
-            -- Tests / unusual environments without VO timers can still
-            -- perform the immediate best-effort scroll.
-            self:scroll_chat_to_bottom()
+            self:scroll_chat_to_bottom(0)
             return
         end
         self.chat_scroll_timer = Timer()
     end
     self.chat_scroll_pending = true
+
+    local function pass(number)
+        if not self.document or not self.visible or not self.chat_follow_bottom then
+            self.chat_scroll_pending = false
+            self.chat_scroll_trace = false
+            return
+        end
+
+        self:scroll_chat_to_bottom(number)
+        if number >= 3 then
+            self.chat_scroll_pending = false
+            self.chat_scroll_trace = false
+            return
+        end
+
+        -- Spread retries across actual render frames instead of assuming
+        -- a single 40ms callback always sees finished RmlUi layout.
+        local delay = number == 1 and 120 or 240
+        local ok, err = pcall(function()
+            self.chat_scroll_timer:SetTimeout(delay, function()
+                pass(number + 1)
+            end)
+        end)
+        if not ok then
+            self.chat_scroll_pending = false
+            self.chat_scroll_trace = false
+            print("Skynet UI: failed to reschedule chat follow: "
+                .. tostring(err))
+        end
+    end
+
     local ok, err = pcall(function()
         self.chat_scroll_timer:SetTimeout(40, function()
-            self.chat_scroll_pending = false
-            if self.document and self.visible and self.chat_follow_bottom then
-                self:scroll_chat_to_bottom()
-            end
+            pass(1)
         end)
     end)
     if not ok then
         self.chat_scroll_pending = false
-        print("Skynet UI: cannot schedule chat autoscroll: " .. tostring(err))
-        self:scroll_chat_to_bottom()
+        print("Skynet UI: cannot schedule chat follow: " .. tostring(err))
+        self:scroll_chat_to_bottom(0)
+        self.chat_scroll_trace = false
     end
 end
 
@@ -845,6 +904,9 @@ function UI:render_chat()
         -- can generate a "scroll" event synchronously during inner_rml.
         self:schedule_chat_follow()
     end
+    -- Stable anchor is resolved through the document after the RmlUi DOM
+    -- updates. It is the final child of the scrollable chat list.
+    output[#output + 1] = '<div id="skynet-chat-tail" class="chat-tail"></div>'
     node.inner_rml = table.concat(output)
 end
 
