@@ -289,15 +289,17 @@ RegisterUserCommand("skynetui", function(_, args)
                 return
             end
             ui:cancel_chat()
-            chat_input_mode = "rml"
-            print("Skynet UI: A now tests inline RmlUi input (" .. mode
+            chat_input_mode = mode
+            ui:set_chat_diagnostics(mode == "hud")
+            print("Skynet UI: Shift+A now tests inline RmlUi input (" .. mode
                 .. "); auto-recovery after 12 seconds")
         elseif mode == "native" then
             ui:cancel_chat()
             chat_input_mode = "native"
-            print("Skynet UI: A restored to native VO prompt")
+            ui:set_chat_diagnostics(false)
+            print("Skynet UI: Shift+A restored to native VO prompt")
         else
-            print("Skynet UI: /skynetui input rml|native")
+            print("Skynet UI: /skynetui input rml|hud|native")
         end
         return
     elseif command == "native" then
@@ -332,4 +334,4 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
     end
 end
 
-print("Skynet UI prototype loaded; A opens native chat; /skynetui input rml|hud|native")
+print("Skynet UI prototype loaded; Shift+A opens native chat; /skynetui input rml|hud|native")
