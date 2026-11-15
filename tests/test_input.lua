@@ -80,6 +80,33 @@ local failing = Input.new({
 local ok = failing:acquire("bad")
 assert(not ok and hud.active == "YES" and failing.total == 0)
 
+-- Opening navigation/PDA while Skynet owns the input must not put
+-- Game.SetInputMode(true) back into flight mode over the menu.
+local menu_switched, menu_cancel = {}, nil
+local ship_visible = true
+local menu_router = Input.new({
+    get_hud = function() return hud end,
+    set_input_mode = function(enabled)
+        menu_switched[#menu_switched + 1] = enabled
+    end,
+    should_restore_flight = function() return ship_visible end,
+    new_timer = Timer,
+})
+assert(menu_router:acquire("layout", function(reason)
+    menu_cancel = reason
+end))
+assert(hud.active == "NO" and menu_switched[1] == false)
+ship_visible = false
+menu_router:cancel_all("ship-hud-not-visible")
+assert(hud.active == "YES" and menu_router.total == 0)
+assert(menu_cancel == "ship-hud-not-visible")
+assert(#menu_switched == 1) -- No flight-mode true while PDA is open.
+ship_visible = true
+assert(menu_router:acquire("chat"))
+assert(menu_router:release("chat"))
+assert(menu_switched[#menu_switched] == true) -- Normal flight restores.
+assert(#menu_switched == 3)
+
 -- Minimal fake RmlUi element: dispatch real-style event parameters to listeners.
 local function element()
     local node = { listeners = {}, attrs = {}, focused = false }
