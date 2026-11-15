@@ -544,6 +544,7 @@ function UI:begin_chat()
     self.chat_draft = ""
     form.style.display = "block"
     self:layout() -- shrink the history viewport before taking input focus
+    self:schedule_chat_follow()
 
     local opened, open_err = self.chat_entry:open()
     if not opened then
@@ -573,6 +574,7 @@ function UI:cancel_chat(reason)
     local form = self:node("chat-form")
     if form then form.style.display = "none" end
     self:layout() -- restore the history viewport height after closing input
+    self:schedule_chat_follow()
     -- Always restore native HUD interaction, even when focus failed to open.
     self:notify_chat_focus(false)
 end
@@ -718,20 +720,13 @@ function UI:scroll_chat_to_bottom()
     local node = self:node("chat-list")
     if not node or not self.chat_follow_bottom then return end
     self.chat_scroll_applying = true
-    local last = node.last_child
-    local ok = false
-    if last then
-        ok = pcall(function() last:ScrollIntoView(false) end)
-    end
-    -- ScrollIntoView() is documented in RmlUi's Lua Element API. Keep
-    -- scroll_top as a fallback in case the embedded VO binding differs.
-    if not ok then
-        pcall(function()
-            local height = tonumber(node.scroll_height) or 0
-            local client = tonumber(node.client_height) or 0
-            node.scroll_top = math.max(0, height - client)
-        end)
-    end
+    -- Always set scroll_top directly after relayout: the last child can
+    -- otherwise be RmlUi's generated scrollbar rather than a chat row.
+    pcall(function()
+        local height = tonumber(node.scroll_height) or 0
+        local client = tonumber(node.client_height) or 0
+        node.scroll_top = math.max(0, height - client)
+    end)
     self.chat_scroll_applying = false
 end
 
