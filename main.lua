@@ -271,10 +271,22 @@ RegisterUserCommand("skynetui", function(_, args)
                         .. " the panel and never push the input below the viewport.",
                 }
             end
-            -- One DOM update and one follow scroll, not 40 repeated rebuilds.
+            -- One chat DOM update and one follow scroll, not 40 rebuilds.
             ui:add_chat_batch(messages)
-            ui:follow_chat(true) -- Explicit test; log actual scroll metrics on 3 passes.
-            print("Skynet UI: added 40 messages; following newest")
+            ui:follow_chat(true) -- Log actual scroll metrics on 3 passes.
+
+            -- Fill sightings with six different ages (0% to 95% of TTL)
+            -- so the progressive opacity is immediately visible in-game.
+            -- Each refresh keeps aging and eventually removes these rows.
+            local seen_now = os.time()
+            local ttl = math.max(1, tonumber(ui.settings.sighting_ttl) or 60)
+            local phases = {0, 0.20, 0.40, 0.60, 0.80, 0.95}
+            for i, phase in ipairs(phases) do
+                local age = math.floor(ttl * phase)
+                ui:add_sighting("Fade-" .. i, "Vult", "B-8", seen_now - age)
+            end
+            print("Skynet UI: added 40 chat messages and 6 aging sightings;"
+                .. " following newest chat")
         else
             ui:add_chat("Raven", "New demo message.")
             ui:add_sighting("Drake", "Vult", "Odia M-14")
@@ -332,4 +344,4 @@ if gkinterface and type(gkinterface.GKProcessCommand) == "function" then
 end
 
 print("Skynet UI loaded; Shift+A chat; /skynetui layout for drag/resize;"
-    .. " /skynetui demo flood tests scrolling")
+    .. " /skynetui demo flood tests scrolling and fading sightings")
