@@ -227,12 +227,11 @@ function UI:cancel_chat()
     self:notify_chat_focus(false)
 end
 
-function UI:submit_chat()
-    if not self.chat_input_open then return false end
-    local input = self:node("chat-input")
-    local message = input and tostring(input.value or "") or ""
+-- Accept text from either an RmlUi input or VO's native chat prompt.
+-- Transport details belong to the callback, never to this HUD component.
+function UI:deliver_chat(message)
+    if type(message) ~= "string" then return false end
     message = message:match("^%s*(.-)%s*$")
-    self:cancel_chat()
     if message == "" then return false end
     if type(self.on_chat_submit) == "function" then
         local ok, err = pcall(self.on_chat_submit, message)
@@ -242,6 +241,14 @@ function UI:submit_chat()
         end
     end
     return true
+end
+
+function UI:submit_chat()
+    if not self.chat_input_open then return false end
+    local input = self:node("chat-input")
+    local message = input and tostring(input.value or "") or ""
+    self:cancel_chat()
+    return self:deliver_chat(message)
 end
 
 function UI:set_connected(connected)
