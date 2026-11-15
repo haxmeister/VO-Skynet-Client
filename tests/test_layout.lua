@@ -98,6 +98,47 @@ flush_follow()
 assert(ui.chat_scroll_pending == false)
 assert(ui.chat_follow_bottom == true)
 
+-- Regression: VO's Timer() is callable but may be a TABLE, not a function.
+-- The old type(Timer) == "function" guard silently skipped all delayed
+-- passes and only performed pass 0.
+local original_timer = Timer
+local callable_timer = {}
+function callable_timer:SetTimeout(delay, callback)
+    self.delay = delay
+    self.callback = callback
+end
+Timer = setmetatable({}, {
+    __call = function()
+        return callable_timer
+    end,
+})
+assert(type(Timer) == "table")
+local probe = UI.new({ visible = true })
+probe:schedule_chat_follow()
+assert(probe.chat_scroll_pending)
+assert(probe.chat_scroll_timer == callable_timer)
+assert(callable_timer.delay == 40)
+Timer = original_timer
+
+-- A large replacement may report an old scroll height at pass 1. Later
+-- passes must re-read it, and the numeric scroll must not move backward.
+local delayed = nodes["chat-list"]
+ui:follow_chat()
+delayed.client_height = 80
+delayed.scroll_height = 120
+delayed.scroll_top = 0
+local first_pass = scroll_timer.callback
+first_pass()
+assert(delayed.scroll_top == 40)
+delayed.scroll_height = 900
+local second_pass = scroll_timer.callback
+second_pass()
+assert(delayed.scroll_top == 820)
+local third_pass = scroll_timer.callback
+third_pass()
+assert(delayed.scroll_top == 820)
+assert(not ui.chat_scroll_pending)
+
 -- A burst of new messages should scroll to the new measured scroll range,
 -- not the old scroll_height before RmlUi's asynchronous relayout.
 local list = nodes["chat-list"]
@@ -237,4 +278,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: measured-bottom 3-pass follow, flood batch, manual scroll, dividers, resize")
+print("PASS: callable-table Timer, delayed-bottom scroll, flood batch, manual scroll, dividers, resize")
