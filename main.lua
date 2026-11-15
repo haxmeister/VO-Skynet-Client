@@ -262,12 +262,19 @@ RegisterUserCommand("skynetui", function(_, args)
     elseif command == "demo" then
         user_wants_visible = true
         if args and args[2] == "flood" then
+            local messages = {}
             for i = 1, 40 do
-                ui:add_chat("DEMO", "Scrolling test message " .. i
-                    .. ": this intentionally long chat entry should wrap within"
-                    .. " the panel and never push the input below the viewport.")
+                messages[#messages + 1] = {
+                    name = "DEMO",
+                    message = "Scrolling test message " .. i
+                        .. ": this intentionally long chat entry should wrap within"
+                        .. " the panel and never push the input below the viewport.",
+                }
             end
-            print("Skynet UI: added 40 messages to test chat scroll")
+            -- One DOM update and one follow scroll, not 40 repeated rebuilds.
+            ui:add_chat_batch(messages)
+            ui:follow_chat() -- Explicit test command should show message 40.
+            print("Skynet UI: added 40 messages; following newest")
         else
             ui:add_chat("Raven", "New demo message.")
             ui:add_sighting("Drake", "Vult", "Odia M-14")
