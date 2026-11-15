@@ -131,14 +131,15 @@ local top_index = assert(rml_source:find('<div id="columns-top-fade">', 1, true)
 local fill_index = assert(rml_source:find('<div id="columns-solid-fill">', 1, true))
 local online_index = assert(rml_source:find('<div id="online-panel"', 1, true))
 assert(top_index < fill_index and fill_index < online_index)
--- The chat should mask its own text pixels rather than paint a navy
--- overlay that causes a hard rectangle on the translucent column top.
-local mask_css = assert(rml_source:match(
-    "#chat%-list%.chat%-faded%s*{([^}]+)}"))
-assert(mask_css:find("mask-image: linear-gradient(", 1, true))
-assert(mask_css:find("rgba(255, 255, 255, 0) 0px", 1, true))
-assert(mask_css:find("rgba(255, 255, 255, 255) 37px", 1, true))
+-- VO doesn't render advanced masks. Instead fade *existing chat row
+-- opacity* using its scroll offset, without any painted overlay.
+local list_css = assert(rml_source:match("#chat%-list%s*{([^}]+)}"))
+assert(list_css:find("position: relative;", 1, true))
+assert(list_css:find("overflow-y: scroll;", 1, true))
+assert(not rml_source:find("mask-image", 1, true))
 assert(not rml_source:find("chat-top-fade", 1, true))
+assert(not rml_source:find("chat-faded", 1, true))
+assert(rml_source:find(".chat-row {", 1, true))
 -- Validate all rgba() declarations to prevent accidental CSS-style alpha
 -- values from returning in future visual changes.
 for channels in rml_source:gmatch("rgba%(([^)]*)%)") do
@@ -164,7 +165,6 @@ ui:set_connected(false)
 assert(nodes["connection-status"].inner_rml:find(">DISCONNECTED<", 1, true))
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
-assert(nodes["chat-list"].classes["chat-faded"] == false)
 -- 166px panel - 25px header - 37px gradient = 104px solid fill.
 assert(nodes["columns-solid-fill"].style.height == "104px")
 assert(nodes["split-left"].style["border-width"] == "0px")
@@ -218,7 +218,6 @@ delayed.scroll_top = 0
 local first_pass = scroll_timer.callback
 first_pass()
 assert(delayed.scroll_top == 40)
-assert(nodes["chat-list"].classes["chat-faded"] == true)
 delayed.scroll_height = 900
 local second_pass = scroll_timer.callback
 second_pass()
@@ -254,9 +253,7 @@ list.scroll_height = 520 -- simulate RmlUi relayout after DOM replacement
 list.scroll_top = 0
 list:dispatch("scroll") -- synthetic event from reflow is NOT user intent
 assert(ui.chat_follow_bottom == true)
-assert(nodes["chat-list"].classes["chat-faded"] == false)
 flush_follow()
-assert(nodes["chat-list"].classes["chat-faded"] == true)
 assert(list.scroll_top == 440)
 assert(ui.chat_scroll_pending == false)
 
@@ -264,7 +261,6 @@ assert(ui.chat_scroll_pending == false)
 list.scroll_top = 0
 list:dispatch("mousescroll")
 list:dispatch("scroll")
-assert(nodes["chat-list"].classes["chat-faded"] == false)
 assert(ui.chat_follow_bottom == false)
 
 -- User intentionally scrolls upward: do not snap back on new messages.
@@ -272,7 +268,6 @@ list.scroll_top = 100
 list:dispatch("mousescroll") -- real mouse-wheel intent precedes scroll
 list:dispatch("scroll")
 assert(ui.chat_follow_bottom == false)
-assert(nodes["chat-list"].classes["chat-faded"] == true)
 list.scroll_height = 560
 ui:add_chat("TEST", "should stay at manually selected position")
 assert(list.scroll_top == 100)
@@ -308,10 +303,8 @@ assert(ui.geometry.sightings == 160)
 assert(ui.geometry.chat == 280)
 -- No unnecessary class reapplication during periodic layout updates.
 local class_updates = nodes["skynet-panel"].class_updates
-local chat_mask_updates = nodes["chat-list"].class_updates
 ui:layout()
 assert(nodes["skynet-panel"].class_updates == class_updates)
-assert(nodes["chat-list"].class_updates == chat_mask_updates)
 assert(nodes["chat-list"].style.height == "131px")
 assert(nodes["online-list"].style.height == "131px")
 assert(nodes["sightings-list"].style.height == "131px")
@@ -370,7 +363,6 @@ assert(ui.geometry.sightings == 190)
 assert(ui.geometry.chat >= 160)
 -- Mask is tied to the scroll viewport, so it follows column resizing
 -- automatically without allocating an overlay or changing scroll width.
-assert(nodes["chat-list"].classes["chat-faded"] == true)
 
 -- History viewport must shrink exactly by input row height, then recover.
 local before = tonumber(nodes["chat-list"].style.height:match("^(%d+)px$"))
@@ -491,6 +483,55 @@ sighting_ui:tick()
 assert(sighting_ui.sightings.FadePilot == nil)
 assert(sighting_list.inner_rml == "")
 
+-- A fake scroll viewport lets us verify that fading changes only text
+-- opacity and never adds a background, mask or extra interactive overlay.
+local fade_list = element("chat-list")
+fade_list.scroll_top = 50
+fade_list.scroll_height = 300
+fade_list.client_height = 80
+local fade_rows = {}
+for i, offset in ipairs({30, 70, 120}) do
+    local row = element("chat-row-" .. i)
+    row.offset_top = offset
+    row.offset_height = 18
+    fade_rows[i] = row
+end
+local chat_ui = UI.new({})
+chat_ui.chat = {
+    {name = "A", message = "first"},
+    {name = "B", message = "second"},
+    {name = "C", message = "third"},
+}
+chat_ui.document = {
+    GetElementById = function(_, id)
+        if id == "chat-list" then return fade_list end
+        for i, row in ipairs(fade_rows) do
+            if id == row.id then return row end
+        end
+    end,
+}
+chat_ui:update_chat_fade()
+assert(fade_rows[1].style.opacity == "0.000")
+assert(tonumber(fade_rows[2].style.opacity) > 0.8)
+assert(tonumber(fade_rows[2].style.opacity) < 0.95)
+assert(fade_rows[3].style.opacity == "1.000")
+local writes = {}
+for i, row in ipairs(fade_rows) do writes[i] = row.style.opacity end
+chat_ui:update_chat_fade()
+for i, row in ipairs(fade_rows) do assert(row.style.opacity == writes[i]) end
+-- Scroll to the beginning: every message becomes fully readable.
+fade_list.scroll_top = 0
+chat_ui:update_chat_fade()
+for _, row in ipairs(fade_rows) do assert(row.style.opacity == "1") end
+-- Remove the extra opacity when history doesn't overflow.
+fade_list.scroll_top = 20
+fade_list.scroll_height = 80
+chat_ui:update_chat_fade()
+for _, row in ipairs(fade_rows) do assert(row.style.opacity == "1") end
+-- Chat HTML gets stable IDs to target while updating scroll positions.
+assert(ui_source:find('id="chat-row-' , 1, true))
+assert(ui_source:find("row.style.opacity = opacity", 1, true))
+
 -- The flood command must inject sample sightings at multiple TTL phases,
 -- without changing the 40-message batch or follow-to-bottom behavior.
 local main_file = assert(io.open("main.lua", "r"))
@@ -501,4 +542,4 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: no hard chat overlay, conditional text mask, detached pill, layout and sighting fade")
+print("PASS: supported chat row opacity fade, no hard rectangle, detached pill, layout and sightings")
