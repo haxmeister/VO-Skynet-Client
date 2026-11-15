@@ -42,9 +42,8 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-bottom-width: 0px;
     drag: drag;
 }
-/* SKYNET status is a fully rounded 35%-transparent pill. Keep it opaque
-   relative to the soft column transition below (no gradient on the pill).
-   Its 22px height leaves a 3px visible gap above the column viewport. */
+/* SKYNET status is a fully rounded, 35%-transparent pill.
+   Its 22px height leaves a 3px gap above the content columns. */
 #skynet-tab {
     display: flex;
     flex-direction: row;
@@ -86,35 +85,10 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     width: 100%;
     overflow: hidden;
-    /* The row itself must be clear at the top. Two non-interactive
-       backdrop elements draw a transparent-to-navy band, then a uniform
-       35%-transparent fill behind all columns and both splitter gutters. */
-    position: relative;
+    /* One uniform tint across the columns AND the splitter gutters.
+       No gradient layers and no stacked translucent child backgrounds. */
     padding: 0px 3px 4px;
     min-height: 0;
-    background-color: transparent;
-}
-#columns-top-fade {
-    position: absolute;
-    top: 0px;
-    left: 0px;
-    width: 100%;
-    height: 37px;
-    pointer-events: none;
-    z-index: 0;
-    decorator: vertical-gradient(
-        rgba(7, 20, 36, 0) rgba(7, 20, 36, 166)
-    );
-}
-#columns-solid-fill {
-    position: absolute;
-    top: 37px;
-    left: 0px;
-    width: 100%;
-    /* The precise remaining height is set by ui.lua during layout. */
-    height: 100px;
-    pointer-events: none;
-    z-index: 0;
     background-color: rgba(7, 20, 36, 166);
 }
 .section {
@@ -126,10 +100,8 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     min-width: 0;
     min-height: 0;
     padding: 3px 5px;
-    /* The two backdrop layers include the splitter gutters. Child columns
-       sit above the backdrop and must not stack another tinted background. */
-    position: relative;
-    z-index: 1;
+    /* The shared row background also covers splitter gutters. The
+       individual sections stay clear to avoid double-tinting. */
     background-color: transparent;
 }
 .scroller {
@@ -146,15 +118,10 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
 .online-row { display: block; margin-bottom: 3px; }
 #chat-panel { width: 290px; }
 #chat-list {
-    position: relative;
     overflow-y: scroll;
     word-break: break-word;
     white-space: normal;
 }
-/* VO does not render advanced mask-image, so fade chat rows using their
-   supported opacity property. Making the list the positioned parent
-   keeps each row's offset_top in list-content coordinates. This has no
-   painted overlay and cannot add a hard edge over the fading backdrop. */
 .chat-row { display: block; margin-bottom: 3px; white-space: normal; word-break: break-word; }
 #sightings-panel { width: 150px; }
 #sightings-list { white-space: nowrap; }
@@ -175,8 +142,6 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     /* This remains the unchanged 8px drag target. Draw the single line
        using the 1px child rather than an alpha border: VO can make
        translucent border colors disappear entirely. */
-    position: relative;
-    z-index: 1;
     background-color: transparent;
     border-width: 0px;
     drag: drag;
@@ -293,8 +258,6 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
       </div>
     </div>
     <div id="skynet-columns">
-      <div id="columns-top-fade"></div>
-      <div id="columns-solid-fill"></div>
       <div id="online-panel" class="section">
         <div id="online-list" class="scroller"></div>
       </div>
