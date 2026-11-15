@@ -300,7 +300,7 @@ function UI:layout()
             -- stays off so there can never be two separating lines.
             node.style["border-width"] = "0px"
             node.style["background-color"] = editing
-                and "rgba(23, 62, 83, 0.25)" or "transparent"
+                and "rgba(23, 62, 83, 64)" or "transparent"
         end
         local guide = self:node(id .. "-guide")
         if guide then
