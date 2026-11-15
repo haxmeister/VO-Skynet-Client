@@ -1016,11 +1016,15 @@ function UI:render_sightings()
     end)
     local output = {}
     for _, s in ipairs(items) do
-        local age = math.max(0, math.floor(now - s.seen_at))
-        -- RmlUi's opacity is 0..1 (unlike rgba alpha, which is 0..255).
-        -- Fade the entire row, including any colored pilot/sector spans,
-        -- smoothly from fully legible to 12% just before it expires.
-        local opacity = math.max(0.12, 1 - (age / ttl) * 0.88)
+        local elapsed = math.max(0, now - s.seen_at)
+        local age = math.floor(elapsed)
+        -- Keep sightings fully readable for the first 85% of their TTL.
+        -- Only during the final 15% fade the entire row down toward 12%.
+        -- RmlUi opacity is 0..1, unlike the 0..255 rgba alpha channel.
+        local fade_start = ttl * 0.85
+        local fade_progress = math.max(0, math.min(1,
+            (elapsed - fade_start) / (ttl - fade_start)))
+        local opacity = 1 - 0.88 * fade_progress
         output[#output + 1] = '<div class="sighting-row" style="opacity: '
             .. string.format("%.2f", opacity) .. ';">'
             .. label(s.name, self:color_of(self.player_alliances[s.name]), "sighting-pilot")
