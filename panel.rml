@@ -4,7 +4,7 @@
 <style>
 /* VO RmlUi has no default HTML/scrollbar styles. All dimensions are explicit.
    CRITICAL: RmlUi RGBA alpha is 0..255, not the browser's 0..1!
-   rgba(7, 20, 36, 235) is roughly 92% opaque, whereas 0.92 is invisible. */
+   rgba(7, 20, 36, 185) is roughly 73% opaque, whereas 0.92 is invisible. */
 div, form { display: block; }
 body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color: #e4ecf6; }
 #skynet-panel {
@@ -42,8 +42,15 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     border-bottom-width: 0px;
     drag: drag;
 }
-/* This is a short tab, not a full-width title bar. Match the exact color
-   of .section and align its lower edge with the content below. */
+/* A small VO-style tab. The stepped tip approximates a slanted right edge
+   using ordinary RmlUi divs (no transforms, clip-path or SVG required).
+   Its solid portions share the exact same background as #skynet-columns. */
+#skynet-tab {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-end;
+    height: 24px;
+}
 #skynet-identity {
     display: flex;
     flex-direction: row;
@@ -51,9 +58,26 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     height: 24px;
     padding: 3px 9px;
-    background-color: rgba(7, 20, 36, 235);
-    border-radius: 5px 5px 0px 0px;
+    background-color: rgba(7, 20, 36, 185);
+    border-radius: 5px 0px 0px 0px;
 }
+#skynet-tab-angle {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 16px;
+    height: 24px;
+}
+.tab-angle-step {
+    display: block;
+    height: 6px;
+    min-height: 6px;
+    background-color: rgba(7, 20, 36, 185);
+}
+#tab-angle-1 { width: 4px; }
+#tab-angle-2 { width: 8px; }
+#tab-angle-3 { width: 12px; }
+#tab-angle-4 { width: 16px; }
 #skynet-title {
     font-weight: bold;
     color: #f5a44b;
@@ -79,10 +103,12 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     box-sizing: border-box;
     width: 100%;
     overflow: hidden;
-    /* No top gap: the orange SKYNET tab touches the first column.
-       Keep 4px total vertical padding to preserve measured list heights. */
+    /* A SINGLE background behind all columns and both 8px splitter gaps.
+       This prevents unfilled gutters and avoids double-tinting the columns.
+       Align the tab directly to the row; retain geometry/scrolling padding. */
     padding: 0px 3px 4px;
     min-height: 0;
+    background-color: rgba(7, 20, 36, 185);
 }
 .section {
     display: flex;
@@ -93,9 +119,9 @@ body { width: 100%; height: 100%; margin: 0; padding: 0; font-size: 13px; color:
     min-width: 0;
     min-height: 0;
     padding: 3px 5px;
-    /* Deliberately more opaque than the old 0.72 outer-panel tint.
-       All three columns use the same paint as the SKYNET status tab. */
-    background-color: rgba(7, 20, 36, 235);
+    /* The shared #skynet-columns background also fills splitter gutters;
+       transparent sections prevent stacking alpha and darkening columns. */
+    background-color: transparent;
 }
 .scroller {
     display: block;
@@ -240,9 +266,17 @@ scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc {
 <body>
   <div id="skynet-panel">
     <div id="skynet-header">
-      <div id="skynet-identity">
-        <span id="skynet-title">SKYNET:</span>
-        <span id="connection-status">DISCONNECTED</span>
+      <div id="skynet-tab">
+        <div id="skynet-identity">
+          <span id="skynet-title">SKYNET:</span>
+          <span id="connection-status">DISCONNECTED</span>
+        </div>
+        <div id="skynet-tab-angle">
+          <div id="tab-angle-1" class="tab-angle-step"></div>
+          <div id="tab-angle-2" class="tab-angle-step"></div>
+          <div id="tab-angle-3" class="tab-angle-step"></div>
+          <div id="tab-angle-4" class="tab-angle-step"></div>
+        </div>
       </div>
       <div id="skynet-controls">
         <span id="layout-done">DONE</span>
