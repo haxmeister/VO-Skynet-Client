@@ -102,9 +102,23 @@ local rml_source = rml_file:read("*a")
 rml_file:close()
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
-local shared_fill = "background-color: rgba(7, 20, 36, 0.92);"
+-- RmlUi differs from browser CSS: rgba() alpha is 0..255 rather
+-- than 0..1. Alpha 235 is approximately 92% opacity. A decimal 0.92
+-- would leave the panes almost completely invisible.
+local shared_fill = "background-color: rgba(7, 20, 36, 235);"
 assert(tab_css:find(shared_fill, 1, true))
 assert(section_css:find(shared_fill, 1, true))
+-- Validate all rgba() declarations to prevent accidental CSS-style alpha
+-- values from returning in future visual changes.
+for channels in rml_source:gmatch("rgba%(([^)]*)%)") do
+    local alpha = channels:match(",%s*(%d+)%s*$")
+    assert(alpha and tonumber(alpha) >= 0 and tonumber(alpha) <= 255,
+        "RmlUi rgba() requires byte alpha (0..255): " .. channels)
+end
+local ui_file = assert(io.open("ui.lua", "r"))
+local ui_source = ui_file:read("*a")
+ui_file:close()
+assert(ui_source:find('"rgba(23, 62, 83, 64)"', 1, true))
 assert(rml_source:find("padding: 0px 3px 4px;", 1, true))
 assert(rml_source:find('id="skynet-title">SKYNET:</span>', 1, true))
 
@@ -352,4 +366,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: matched Skynet tab/column background, transparent frame, full-height guides, flood follow")
+print("PASS: RmlUi alpha 0..255, matched opaque tab/columns, transparent frame, full-height guides, flood follow")
