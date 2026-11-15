@@ -35,7 +35,7 @@ end
 
 local ids = {
     "skynet-panel", "skynet-header", "skynet-tab", "skynet-identity",
-    "skynet-columns", "columns-top-fade", "columns-solid-fill", "skynet-title",
+    "skynet-columns", "skynet-title",
     "layout-done", "resize-grip",
     "online-panel", "online-list",
     "chat-panel", "chat-list", "chat-form", "chat-input",
@@ -96,49 +96,30 @@ local ui = UI.new({
     end,
     on_chat_focus = function() return true end,
 })
--- The column row stays clear at its top and paints two backdrop children:
--- a 37px transparent-to-navy gradient, then full 35%-transparent navy.
--- A separate all-corners-rounded pill uses that same navy fill.
+-- One uniform navy background fills the columns and splitter gutters.
+-- Only sighting text retains an opacity fade near expiration.
 local rml_file = assert(io.open("panel.rml", "r"))
 local rml_source = rml_file:read("*a")
 rml_file:close()
 local tab_css = assert(rml_source:match("#skynet%-identity%s*{([^}]+)}"))
 local row_css = assert(rml_source:match("#skynet%-columns%s*{([^}]+)}"))
 local section_css = assert(rml_source:match("%.section%s*{([^}]+)}"))
-local top_css = assert(rml_source:match("#columns%-top%-fade%s*{([^}]+)}"))
-local solid_css = assert(rml_source:match("#columns%-solid%-fill%s*{([^}]+)}"))
--- 35% transparency means 65% opacity: alpha=166/255 in RmlUi.
+local chat_css = assert(rml_source:match("#chat%-list%s*{([^}]+)}"))
+-- RmlUi rgba alpha is 0..255: 166 is 65% opaque.
 local shared_fill = "background-color: rgba(7, 20, 36, 166);"
 assert(tab_css:find(shared_fill, 1, true))
-assert(solid_css:find(shared_fill, 1, true))
-assert(row_css:find("background-color: transparent;", 1, true))
+assert(row_css:find(shared_fill, 1, true))
 assert(section_css:find("background-color: transparent;", 1, true))
-assert(row_css:find("position: relative;", 1, true))
 assert(row_css:find("padding: 0px 3px 4px;", 1, true))
 assert(tab_css:find("border-radius: 11px;", 1, true))
 assert(tab_css:find("height: 22px;", 1, true))
-assert(not rml_source:find("tab-angle", 1, true))
-assert(rml_source:find('id="skynet-tab"', 1, true))
-assert(top_css:find("height: 37px;", 1, true))
-assert(top_css:find("pointer-events: none;", 1, true))
-assert(top_css:find("decorator: vertical-gradient(", 1, true))
-assert(top_css:find("rgba(7, 20, 36, 0)", 1, true))
-assert(top_css:find("rgba(7, 20, 36, 166)", 1, true))
-assert(solid_css:find("top: 37px;", 1, true))
-assert(solid_css:find("pointer-events: none;", 1, true))
--- Draw both backdrops first so interactive columns and splitters stay above.
-local top_index = assert(rml_source:find('<div id="columns-top-fade">', 1, true))
-local fill_index = assert(rml_source:find('<div id="columns-solid-fill">', 1, true))
-local online_index = assert(rml_source:find('<div id="online-panel"', 1, true))
-assert(top_index < fill_index and fill_index < online_index)
--- VO doesn't render advanced masks. Instead fade *existing chat row
--- opacity* using its scroll offset, without any painted overlay.
-local list_css = assert(rml_source:match("#chat%-list%s*{([^}]+)}"))
-assert(list_css:find("position: relative;", 1, true))
-assert(list_css:find("overflow-y: scroll;", 1, true))
+assert(chat_css:find("overflow-y: scroll;", 1, true))
+assert(not chat_css:find("position: relative;", 1, true))
+assert(not rml_source:find("columns-top-fade", 1, true))
+assert(not rml_source:find("columns-solid-fill", 1, true))
+assert(not rml_source:find("vertical-gradient", 1, true))
 assert(not rml_source:find("mask-image", 1, true))
 assert(not rml_source:find("chat-top-fade", 1, true))
-assert(not rml_source:find("chat-faded", 1, true))
 assert(rml_source:find(".chat-row {", 1, true))
 -- Validate all rgba() declarations to prevent accidental CSS-style alpha
 -- values from returning in future visual changes.
@@ -165,8 +146,6 @@ ui:set_connected(false)
 assert(nodes["connection-status"].inner_rml:find(">DISCONNECTED<", 1, true))
 assert(nodes["skynet-panel"].style["border-width"] == "0px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
--- 166px panel - 25px header - 37px gradient = 104px solid fill.
-assert(nodes["columns-solid-fill"].style.height == "104px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#4c7188")
@@ -318,7 +297,6 @@ assert(nodes["skynet-header"].style.display == "flex")
 assert(nodes["skynet-header"].style["border-bottom-width"] == "0px")
 assert(nodes["skynet-panel"].style["border-width"] == "1px")
 assert(nodes["skynet-panel"].style["background-color"] == "transparent")
-assert(nodes["columns-solid-fill"].style.height == "102px")
 assert(nodes["split-left"].style["border-width"] == "0px")
 assert(nodes["split-right"].style["border-width"] == "0px")
 assert(nodes["split-left-guide"].style["background-color"] == "#75a9c8")
@@ -361,9 +339,6 @@ nodes["split-right"]:dispatch("drag", {mouse_x = 680, mouse_y = 660})
 nodes["split-right"]:dispatch("dragend")
 assert(ui.geometry.sightings == 190)
 assert(ui.geometry.chat >= 160)
--- Mask is tied to the scroll viewport, so it follows column resizing
--- automatically without allocating an overlay or changing scroll width.
-
 -- History viewport must shrink exactly by input row height, then recover.
 local before = tonumber(nodes["chat-list"].style.height:match("^(%d+)px$"))
 assert(ui:begin_chat())
@@ -483,54 +458,15 @@ sighting_ui:tick()
 assert(sighting_ui.sightings.FadePilot == nil)
 assert(sighting_list.inner_rml == "")
 
--- A fake scroll viewport lets us verify that fading changes only text
--- opacity and never adds a background, mask or extra interactive overlay.
-local fade_list = element("chat-list")
-fade_list.scroll_top = 50
-fade_list.scroll_height = 300
-fade_list.client_height = 80
-local fade_rows = {}
-for i, offset in ipairs({30, 70, 120}) do
-    local row = element("chat-row-" .. i)
-    row.offset_top = offset
-    row.offset_height = 18
-    fade_rows[i] = row
-end
-local chat_ui = UI.new({})
-chat_ui.chat = {
-    {name = "A", message = "first"},
-    {name = "B", message = "second"},
-    {name = "C", message = "third"},
-}
-chat_ui.document = {
-    GetElementById = function(_, id)
-        if id == "chat-list" then return fade_list end
-        for i, row in ipairs(fade_rows) do
-            if id == row.id then return row end
-        end
-    end,
-}
-chat_ui:update_chat_fade()
-assert(fade_rows[1].style.opacity == "0.000")
-assert(tonumber(fade_rows[2].style.opacity) > 0.8)
-assert(tonumber(fade_rows[2].style.opacity) < 0.95)
-assert(fade_rows[3].style.opacity == "1.000")
-local writes = {}
-for i, row in ipairs(fade_rows) do writes[i] = row.style.opacity end
-chat_ui:update_chat_fade()
-for i, row in ipairs(fade_rows) do assert(row.style.opacity == writes[i]) end
--- Scroll to the beginning: every message becomes fully readable.
-fade_list.scroll_top = 0
-chat_ui:update_chat_fade()
-for _, row in ipairs(fade_rows) do assert(row.style.opacity == "1") end
--- Remove the extra opacity when history doesn't overflow.
-fade_list.scroll_top = 20
-fade_list.scroll_height = 80
-chat_ui:update_chat_fade()
-for _, row in ipairs(fade_rows) do assert(row.style.opacity == "1") end
--- Chat HTML gets stable IDs to target while updating scroll positions.
-assert(ui_source:find('id="chat-row-' , 1, true))
-assert(ui_source:find("row.style.opacity = opacity", 1, true))
+-- No chat opacity tracking, row measurements, or background gradient
+-- should remain; chat text must be fully legible while scrolling.
+assert(not ui_source:find("update_chat_fade", 1, true))
+assert(not ui_source:find("chat_opacity_values", 1, true))
+assert(not ui_source:find("chat-row-", 1, true))
+assert(not ui_source:find("CHAT_TEXT_FADE", 1, true))
+assert(not ui_source:find("COLUMN_BACKDROP_FADE", 1, true))
+assert(not ui_source:find("columns-solid-fill", 1, true))
+assert(ui_source:find([['<div class="chat-row">']], 1, true))
 
 -- The flood command must inject sample sightings at multiple TTL phases,
 -- without changing the 40-message batch or follow-to-bottom behavior.
@@ -542,4 +478,4 @@ assert(main_source:find('ui:add_sighting("Fade-" .. i', 1, true))
 assert(main_source:find("ui:add_chat_batch(messages)", 1, true))
 assert(main_source:find("ui:follow_chat(true)", 1, true))
 
-print("PASS: supported chat row opacity fade, no hard rectangle, detached pill, layout and sightings")
+print("PASS: uniform navy background, fully readable chat, scrolling and smooth sighting fade")
