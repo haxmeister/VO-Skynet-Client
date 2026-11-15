@@ -9,6 +9,10 @@ local DEFAULTS = {
     radar_margin_right = 190,
     bottom_margin = 5,
     height = 166,
+    min_width = 440,
+    min_height = 145,
+    online_width = 180,
+    sightings_width = 160,
     online_name_limit = 20,
     sighting_ttl = 60,
     chat_limit = 200,
@@ -61,6 +65,13 @@ function UI.new(options)
     self.on_chat_focus = options.on_chat_focus
     self.text_entry_class = options.text_entry_class
     self.chat_entry = nil
+    self.load_geometry = options.load_geometry
+    self.save_geometry = options.save_geometry
+    self.on_layout_focus = options.on_layout_focus
+    self.layout_editing = false
+    self.layout_controls_bound = false
+    self.geometry = nil
+    self.drag_state = nil
     self.online = {}
     self.chat = {}
     self.sightings = {}
@@ -85,6 +96,9 @@ function UI:mount(context, document)
     if not self:bind_chat_input() then
         return false, "chat input initialization failed"
     end
+    if not self:bind_layout_controls() then
+        return false, "window controls initialization failed"
+    end
     if self.visible then
         document:Show()
     else
@@ -93,44 +107,329 @@ function UI:mount(context, document)
     return true
 end
 
--- Absolute positioning needs a definite panel width in VO's RmlUi.
--- Compute it from the context width so chat can use all radar-safe space.
-function UI:layout()
-    local panel = self:node("skynet-panel")
-    if not panel or not self.context then return end
-    local dimensions = self.context.dimensions
-    local screen_width = dimensions and tonumber(dimensions.x)
-    if not screen_width or screen_width <= 0 then
-        -- Do not invent a screen resolution when no dimensions are available.
-        return
-    end
+-- Geometry is in actual context pixels, not percentages. Explicit heights
+-- keep RmlUi's flex children from letting chat overflow the panel bottom.
+local HEADER_HEIGHT = 25
+local COLUMN_PADDING = 4
+local SECTION_PADDING = 6
+local HEADING_HEIGHT = 18
+local INPUT_HEIGHT = 29
+local SPLITTER_WIDTH = 8
+local HORIZONTAL_PADDING = 8 -- border + inner columns padding
+local MIN_CHAT_WIDTH = 160
+local MIN_ONLINE_WIDTH = 95
+local MIN_SIGHTINGS_WIDTH = 105
+
+local function clamp(n, low, high)
+    if high < low then return low end
+    return math.max(low, math.min(n, high))
+end
+
+local function px(n)
+    return tostring(math.floor(n + 0.5)) .. "px"
+end
+
+function UI:viewport()
+    if not self.context then return nil end
+    local d = self.context.dimensions
+    local w = d and tonumber(d.x)
+    local h = d and tonumber(d.y)
+    if not w or not h or w <= 0 or h <= 0 then return nil end
+    return math.floor(w), math.floor(h)
+end
+
+function UI:default_geometry(screen_width, screen_height)
     local left = tonumber(self.settings.radar_margin_left) or 190
     local right = tonumber(self.settings.radar_margin_right) or 190
-    local panel_width = math.max(1, screen_width - left - right)
-    if self.layout_width == screen_width and self.layout_left == left
-        and self.layout_right == right then
+    local w = screen_width - left - right
+    local minw = math.min(screen_width, tonumber(self.settings.min_width) or 440)
+    w = clamp(w, minw, screen_width)
+    local h = clamp(tonumber(self.settings.height) or 166,
+        math.min(screen_height, tonumber(self.settings.min_height) or 145),
+        screen_height)
+    return {
+        left = left,
+        top = screen_height - (tonumber(self.settings.bottom_margin) or 5) - h,
+        width = w,
+        height = h,
+        online = tonumber(self.settings.online_width) or 180,
+        sightings = tonumber(self.settings.sightings_width) or 160,
+    }
+end
+
+function UI:normalize_geometry()
+    local w, h = self:viewport()
+    if not w then return false end
+    if not self.geometry then
+        if type(self.load_geometry) == "function" then
+            local ok, value = pcall(self.load_geometry)
+            if ok and type(value) == "table" then
+                self.geometry = value
+            end
+        end
+        if not self.geometry then
+            self.geometry = self:default_geometry(w, h)
+        end
+    end
+    local g = self.geometry
+    local def = self:default_geometry(w, h)
+    g.width = clamp(tonumber(g.width) or def.width,
+        math.min(w, tonumber(self.settings.min_width) or 440), w)
+    g.height = clamp(tonumber(g.height) or def.height,
+        math.min(h, tonumber(self.settings.min_height) or 145), h)
+    g.left = clamp(tonumber(g.left) or def.left, 0, w - g.width)
+    g.top = clamp(tonumber(g.top) or def.top, 0, h - g.height)
+
+    local available = math.max(1,
+        g.width - HORIZONTAL_PADDING - (2 * SPLITTER_WIDTH))
+    local min_online = math.min(MIN_ONLINE_WIDTH, math.floor(available / 4))
+    local min_sightings = math.min(MIN_SIGHTINGS_WIDTH, math.floor(available / 4))
+    local min_chat = math.min(MIN_CHAT_WIDTH,
+        math.max(1, available - min_online - min_sightings))
+    g.online = clamp(tonumber(g.online) or def.online,
+        min_online, available - min_sightings - min_chat)
+    g.sightings = clamp(tonumber(g.sightings) or def.sightings,
+        min_sightings, available - g.online - min_chat)
+    g.chat = math.max(1, available - g.online - g.sightings)
+    return true
+end
+
+function UI:layout()
+    local panel = self:node("skynet-panel")
+    if not panel or not self:normalize_geometry() then return end
+    local g = self.geometry
+
+    panel.style.left = px(g.left)
+    panel.style.top = px(g.top)
+    panel.style.right = "auto"
+    panel.style.bottom = "auto"
+    panel.style.width = px(g.width)
+    panel.style.height = px(g.height)
+
+    -- Give both the column row and each list its own *definite* height.
+    -- The chat form occupies a fixed row only while input is open.
+    local columns_height = math.max(1, g.height - HEADER_HEIGHT - 2)
+    local section_height = math.max(1, columns_height - COLUMN_PADDING)
+    local common_list_height = math.max(1,
+        section_height - SECTION_PADDING - HEADING_HEIGHT)
+    local chat_list_height = math.max(1,
+        common_list_height - (self.chat_input_open and INPUT_HEIGHT or 0))
+
+    local row = self:node("skynet-columns")
+    if row then row.style.height = px(columns_height) end
+    local online = self:node("online-panel")
+    if online then
+        online.style.width = px(g.online)
+        online.style.height = px(section_height)
+    end
+    local chat = self:node("chat-panel")
+    if chat then
+        chat.style.width = px(g.chat)
+        chat.style.height = px(section_height)
+    end
+    local sightings = self:node("sightings-panel")
+    if sightings then
+        sightings.style.width = px(g.sightings)
+        sightings.style.height = px(section_height)
+    end
+    for _, id in ipairs({"split-left", "split-right"}) do
+        local node = self:node(id)
+        if node then node.style.height = px(section_height) end
+    end
+
+    for _, id in ipairs({"online-list", "sightings-list"}) do
+        local node = self:node(id)
+        if node then node.style.height = px(common_list_height) end
+    end
+    local list = self:node("chat-list")
+    if list then list.style.height = px(chat_list_height) end
+
+    local done = self:node("layout-done")
+    if done then
+        done.style.display = self.layout_editing and "block" or "none"
+    end
+    if self.layout_last_viewport_width ~= self:viewport() then
+        -- Only log changes when the viewport width changes; not every drag.
+        print("Skynet UI: panel geometry " .. math.floor(g.width)
+            .. "x" .. math.floor(g.height) .. " at "
+            .. math.floor(g.left) .. "," .. math.floor(g.top))
+        self.layout_last_viewport_width = self:viewport()
+    end
+end
+
+function UI:save_current_geometry()
+    if type(self.save_geometry) ~= "function" or not self.geometry then
         return
     end
-    panel.style.left = tostring(left) .. "px"
-    panel.style.right = "auto"
-    panel.style.width = tostring(panel_width) .. "px"
-    panel.style.bottom = tostring(self.settings.bottom_margin) .. "px"
-    panel.style.height = tostring(self.settings.height) .. "px"
-    self.layout_width = screen_width
-    self.layout_left = left
-    self.layout_right = right
-    print("Skynet UI layout: viewport " .. screen_width .. "px; panel "
-        .. panel_width .. "px; margins " .. left .. "/" .. right)
+    local g = self.geometry
+    local ok, err = pcall(self.save_geometry, {
+        left = math.floor(g.left + 0.5),
+        top = math.floor(g.top + 0.5),
+        width = math.floor(g.width + 0.5),
+        height = math.floor(g.height + 0.5),
+        online = math.floor(g.online + 0.5),
+        sightings = math.floor(g.sightings + 0.5),
+    })
+    if not ok then
+        print("Skynet UI: unable to save layout: " .. tostring(err))
+    end
+end
+
+function UI:set_layout_focus_handler(handler)
+    if handler ~= nil and type(handler) ~= "function" then return false end
+    self.on_layout_focus = handler
+    return true
+end
+
+function UI:set_layout_editing(enabled)
+    enabled = enabled == true
+    if self.layout_editing == enabled then return true end
+    if enabled then
+        if not self.visible or not self.document or not self.layout_controls_bound then
+            return false
+        end
+        if type(self.on_layout_focus) == "function" then
+            local ok, accepted = pcall(self.on_layout_focus, true)
+            if not ok or accepted == false then
+                print("Skynet UI: layout mouse focus unavailable")
+                return false
+            end
+        end
+        self.layout_editing = true
+        print("Skynet UI: layout edit mode; drag title, dividers or lower-right corner")
+    else
+        self.layout_editing = false
+        self.drag_state = nil
+        self:save_current_geometry()
+        if type(self.on_layout_focus) == "function" then
+            local ok, err = pcall(self.on_layout_focus, false)
+            if not ok then
+                print("Skynet UI: layout focus restore error: " .. tostring(err))
+            end
+        end
+        print("Skynet UI: layout editing complete")
+    end
+    self:layout()
+    return true
+end
+
+function UI:reset_layout()
+    local w, h = self:viewport()
+    if not w then return false end
+    self.drag_state = nil
+    self.geometry = self:default_geometry(w, h)
+    self:layout()
+    self:save_current_geometry()
+    print("Skynet UI: default layout restored")
+    return true
+end
+
+function UI:bind_layout_controls()
+    if self.layout_controls_bound then return true end
+    local handles = {
+        ["skynet-header"] = "move",
+        ["resize-grip"] = "resize",
+        ["split-left"] = "split-left",
+        ["split-right"] = "split-right",
+    }
+    local registered = 0
+    for element_id, action in pairs(handles) do
+        local node = self:node(element_id)
+        if not node then
+            print("Skynet UI: missing layout drag handle " .. element_id)
+            return false
+        end
+        local kind = action
+        local ok, err = pcall(function()
+            node:AddEventListener("dragstart", function(event)
+                if not self.layout_editing then return end
+                local p = event and event.parameters
+                local x = p and tonumber(p.mouse_x)
+                local y = p and tonumber(p.mouse_y)
+                if not x or not y or not self.geometry then
+                    print("Skynet UI: dragstart missing mouse coordinates (" .. kind .. ")")
+                    return
+                end
+                local g = self.geometry
+                self.drag_state = {
+                    kind = kind, x = x, y = y,
+                    left = g.left, top = g.top,
+                    width = g.width, height = g.height,
+                    online = g.online, sightings = g.sightings,
+                }
+            end, false)
+
+            node:AddEventListener("drag", function(event)
+                if not self.layout_editing or not self.drag_state
+                    or self.drag_state.kind ~= kind then return end
+                local p = event and event.parameters
+                local x = p and tonumber(p.mouse_x)
+                local y = p and tonumber(p.mouse_y)
+                if not x or not y then return end
+                local drag = self.drag_state
+                local g = self.geometry
+                local dx, dy = x - drag.x, y - drag.y
+                local sw, sh = self:viewport()
+                if not sw then return end
+
+                if kind == "move" then
+                    g.left = clamp(drag.left + dx, 0, sw - g.width)
+                    g.top = clamp(drag.top + dy, 0, sh - g.height)
+                elseif kind == "resize" then
+                    g.width = clamp(drag.width + dx,
+                        math.min(sw, self.settings.min_width), sw - g.left)
+                    g.height = clamp(drag.height + dy,
+                        math.min(sh, self.settings.min_height), sh - g.top)
+                elseif kind == "split-left" then
+                    g.online = drag.online + dx
+                elseif kind == "split-right" then
+                    g.sightings = drag.sightings - dx
+                end
+                self:layout()
+            end, false)
+
+            node:AddEventListener("dragend", function()
+                if not self.drag_state or self.drag_state.kind ~= kind then
+                    return
+                end
+                self.drag_state = nil
+                self:save_current_geometry()
+            end, false)
+        end)
+        if not ok then
+            print("Skynet UI: cannot bind " .. kind .. " drag: " .. tostring(err))
+            return false
+        end
+        registered = registered + 1
+    end
+
+    local done = self:node("layout-done")
+    if not done then return false end
+    local ok, err = pcall(function()
+        done:AddEventListener("click", function(event)
+            if not self.layout_editing then return end
+            if event then pcall(function() event:StopPropagation() end) end
+            self:set_layout_editing(false)
+        end, false)
+    end)
+    if not ok then
+        print("Skynet UI: cannot bind DONE control: " .. tostring(err))
+        return false
+    end
+    self.layout_controls_bound = registered == 4
+    return self.layout_controls_bound
 end
 
 function UI:unmount()
     self:cancel_chat()
+    self:set_layout_editing(false)
     if self.document then
         self.document:Close()
         self.document = nil
     end
     self.chat_listeners_bound = false
     self.chat_entry = nil
+    self.layout_controls_bound = false
 end
 
 function UI:show()
@@ -141,6 +440,7 @@ end
 
 function UI:hide()
     self:cancel_chat()
+    if self.layout_editing then self:set_layout_editing(false) end
     if not self.visible then return end
     self.visible = false
     if self.document then self.document:Hide() end
@@ -229,6 +529,7 @@ function UI:begin_chat()
     self.chat_input_open = true
     self.chat_draft = ""
     form.style.display = "block"
+    self:layout() -- shrink the history viewport before taking input focus
 
     local opened, open_err = self.chat_entry:open()
     if not opened then
@@ -257,6 +558,7 @@ function UI:cancel_chat(reason)
     if self.chat_entry then self.chat_entry:close() end
     local form = self:node("chat-form")
     if form then form.style.display = "none" end
+    self:layout() -- restore the history viewport height after closing input
     -- Always restore native HUD interaction, even when focus failed to open.
     self:notify_chat_focus(false)
 end
@@ -398,7 +700,10 @@ end
 function UI:render_chat()
     local node = self:node("chat-list")
     if not node then return end
-    local autoscroll = node.scroll_top + node.client_height >= node.scroll_height - 8
+    local scroll_top = tonumber(node.scroll_top) or 0
+    local client_height = tonumber(node.client_height) or 0
+    local scroll_height = tonumber(node.scroll_height) or 0
+    local autoscroll = scroll_top + client_height >= scroll_height - 8
     local output = {}
     for _, entry in ipairs(self.chat) do
         output[#output + 1] = '<div class="chat-row">'
