@@ -67,6 +67,14 @@ This branch now adds actual **Send** (RmlUi form submit) and **Cancel** (RmlUi b
 
 Re-test with `/skynetui input hud`, press **Shift+A**, type a very short test message, then try the **Send** button (mouse click). Next try Enter and Escape in separate attempts. Distinguish a real submit (`LOCAL TEST` appears) from an unexpected HUD reappearance or 12-second safety timeout by checking the `Skynet UI:` and `Skynet RmlUi input:` lines in the VO errors log. The 12-second timeout and `/skynetui input native` fallback remain in place.
 
+### Log-confirmed fix for missing RmlUi message value (November 14)
+
+In the Nov 14, 18:51 VO run, RmlUi successfully delivered `keydown`, `textinput`, and `change` events. Enter arrived as key 72, Escape as 81, and the Send button's click handler fired. Both Enter and Send reported `text length=0` and `message delivered=false`, while `Focus()` reported a non-string `input.value`. The failure was reading the input value through the generic element wrapper, **not keyboard routing or a missing submit callback**.
+
+This revision captures the live message from `change` event `event.parameters.value`; `submit` handlers can also read the named form parameter `event.parameters.message`. Enter and Send use the captured value. The input is now cleared with `input:SetAttribute("value", "")` rather than assigning an unsupported `input.value` property. Text itself is never printed to the log, only lengths and event types.
+
+Test `/skynetui input hud` → **Shift+A** → type a short message → **Enter**. It should appear as `LOCAL TEST: ...` in the RmlUi alliance chat, clear the input, and restore the HUD and flight controls. Repeat with **Send** and **Escape**. This is still client-unverified after the revision; if message length remains 0, inspect the `change captured, length=` or `change value type=` diagnostics.
+
 ### Flight-only visibility
 
 The prototype is **hidden by default** on the login, character-selection, and station screens. The plugin loads RML while VO is initializing (when relative file resolution works), but displays the document only when the ship HUD is active and the client reports `HasActiveShip() == true` and `PlayerInStation() == false`.
