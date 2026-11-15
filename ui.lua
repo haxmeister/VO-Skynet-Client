@@ -127,6 +127,8 @@ local HEADER_HEIGHT = 25
 local COLUMN_PADDING = 4
 local SECTION_PADDING = 6
 local HEADING_HEIGHT = 18
+-- Section top padding (3px) + heading (18px): begin guides below titles.
+local DIVIDER_GUIDE_OFFSET = HEADING_HEIGHT + math.floor(SECTION_PADDING / 2)
 local INPUT_HEIGHT = 29
 local SPLITTER_WIDTH = 8
 local HORIZONTAL_PADDING = 8 -- border + inner columns padding
@@ -303,8 +305,11 @@ function UI:layout()
         end
         local guide = self:node(id .. "-guide")
         if guide then
-            -- A solid 1px child is more reliable in VO than a translucent
-            -- border. Muted steel-blue in flight, brighter for layout.
+            -- The heading sits above the vertical rule. Only the 1px visual
+            -- guide is inset; the 8px splitter drag target remains full-height.
+            guide.style["margin-top"] = px(DIVIDER_GUIDE_OFFSET)
+            guide.style.height = px(math.max(1,
+                section_height - DIVIDER_GUIDE_OFFSET))
             guide.style["background-color"] =
                 editing and "#75a9c8" or "#4c7188"
         end
