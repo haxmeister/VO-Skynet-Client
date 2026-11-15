@@ -142,7 +142,9 @@ local INPUT_HEIGHT = 29
 local SPLITTER_WIDTH = 8
 local HORIZONTAL_PADDING = 8 -- border + inner columns padding
 local MIN_CHAT_WIDTH = 160
-local MIN_ONLINE_WIDTH = 95
+-- A narrow online roster is acceptable: RmlUi clips long names.
+-- Previously 95px prevented dragging the divider sufficiently left.
+local MIN_ONLINE_WIDTH = 40
 local MIN_SIGHTINGS_WIDTH = 105
 
 local function clamp(n, low, high)
