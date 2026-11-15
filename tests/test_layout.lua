@@ -83,6 +83,7 @@ local ui = UI.new({
     on_chat_focus = function() return true end,
 })
 assert(ui:mount(ctx, doc))
+assert(nodes["resize-grip"].style.display == "none")
 -- Initial mount may schedule a follow-to-bottom. Flush it before checking.
 assert(scroll_timer.duration == 40 and type(scroll_timer.callback) == "function")
 scroll_timer.callback()
@@ -96,17 +97,32 @@ list.client_height = 80
 list.scroll_height = 120
 ui:add_chat("TEST", "first")
 local scheduled = scroll_timer.schedule_count
-for i = 2, 40 do
-    ui:add_chat("TEST", "flood " .. i)
+
+-- A flood must rebuild the DOM ONCE, not 40 times.
+local renders = 0
+local previous_render = ui.render_chat
+function ui:render_chat()
+    renders = renders + 1
+    return previous_render(self)
 end
-assert(scroll_timer.schedule_count == scheduled) -- one timer, not 40
-list.scroll_height = 520 -- simulate RmlUi recalculating content after render
+local messages = {}
+for i = 2, 40 do
+    messages[#messages + 1] = {name = "TEST", message = "flood " .. i}
+end
+ui:add_chat_batch(messages)
+assert(renders == 1)
+assert(scroll_timer.schedule_count == scheduled) -- one pending scroll
+list.scroll_height = 520 -- simulate RmlUi relayout after DOM replacement
+list.scroll_top = 0
+list:dispatch("scroll") -- synthetic event from reflow is NOT user intent
+assert(ui.chat_follow_bottom == true)
 scroll_timer.callback()
 assert(list.scroll_top == 440)
 assert(ui.chat_scroll_pending == false)
 
 -- User intentionally scrolls upward: do not snap back on new messages.
 list.scroll_top = 100
+list:dispatch("mousescroll") -- real mouse-wheel intent precedes scroll
 list:dispatch("scroll")
 assert(ui.chat_follow_bottom == false)
 list.scroll_height = 560
@@ -114,8 +130,20 @@ ui:add_chat("TEST", "should stay at manually selected position")
 assert(list.scroll_top == 100)
 assert(ui.chat_scroll_pending == false)
 
--- User returns to bottom: follow mode automatically re-engages.
-list.scroll_top = 480
+-- Explicit jump-to-live (used by /skynetui demo flood) resumes following.
+ui:follow_chat()
+assert(ui.chat_follow_bottom == true)
+list.scroll_height = 600
+scroll_timer.callback()
+assert(list.scroll_top == 520)
+
+-- User scrolls up and returns to bottom: follow mode automatically re-engages.
+list.scroll_top = 100
+list:dispatch("mousescroll")
+list:dispatch("scroll")
+assert(ui.chat_follow_bottom == false)
+list.scroll_top = 520
+list:dispatch("mousescroll")
 list:dispatch("scroll")
 assert(ui.chat_follow_bottom == true)
 ui:add_chat("TEST", "follow again")
@@ -136,6 +164,7 @@ assert(nodes["chat-input"].style.height == nil) -- static RML style
 assert(ui:set_layout_editing(true))
 assert(ui.layout_editing)
 assert(nodes["layout-done"].style.display == "block")
+assert(nodes["resize-grip"].style.display == "block")
 assert(focus[#focus] == true)
 
 nodes["skynet-header"]:dispatch("dragstart", {mouse_x = 500, mouse_y = 660})
@@ -190,6 +219,7 @@ assert(ui.geometry.sightings >= 105)
 nodes["layout-done"]:dispatch("click")
 assert(not ui.layout_editing)
 assert(nodes["layout-done"].style.display == "none")
+assert(nodes["resize-grip"].style.display == "none")
 assert(focus[#focus] == false)
 assert(#saves == 5)
 
@@ -199,4 +229,4 @@ assert(ui.geometry.top >= 0)
 ui:unmount()
 assert(doc.closed)
 
-print("PASS: panel drag, corner resize, column splitters, chat input height, viewport clamp, DONE")
+print("PASS: panel resize grip toggle, flood batch scroll, programmatic vs manual scroll, dividers, viewport clamp")
