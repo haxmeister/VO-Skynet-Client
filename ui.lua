@@ -171,19 +171,15 @@ function UI:set_chat_diagnostics(enabled)
     self.chat_diagnostic_events = 0
 end
 
--- The RML form handles Enter; keydown handles Escape and is also an Enter
--- fallback. Close before invoking a callback to prevent duplicate sends.
--- Explicit form controls and key listeners. RmlUi in VO can receive text
--- while some keyboard identifiers / native default submit behavior are absent.
--- Send and Cancel buttons give us a mouse-operated fallback for diagnosis.
+-- Enter submits and Escape cancels the inline RmlUi chat.
+-- The working VO client reports key identifiers 72 / 81 respectively.
+-- Keep the form-submit event as a fallback; no visible buttons are required.
 function UI:bind_chat_input()
     if self.chat_listeners_bound then return true end
     local form = self:node("chat-form")
     local input = self:node("chat-input")
-    local send = self:node("chat-send")
-    local cancel = self:node("chat-cancel")
-    if not form or not input or not send or not cancel then
-        print("Skynet UI: RmlUi chat form or button is missing")
+    if not form or not input then
+        print("Skynet UI: RmlUi chat form or input is missing")
         return false
     end
 
@@ -279,24 +275,10 @@ function UI:bind_chat_input()
         end, false)
     end)
 
-    local ok_buttons, button_err = pcall(function()
-        send:AddEventListener("click", function(event)
-            trace("send-click")
-            stop(event)
-            self:submit_chat("send-button")
-        end, false)
-        cancel:AddEventListener("click", function(event)
-            trace("cancel-click")
-            stop(event)
-            self:cancel_chat("cancel-button")
-        end, false)
-    end)
-
-    self.chat_listeners_bound = ok_form and ok_key and ok_buttons
+    self.chat_listeners_bound = ok_form and ok_key
     if not self.chat_listeners_bound then
         print("Skynet UI: chat listeners failed: form="
-            .. tostring(form_err) .. " key=" .. tostring(key_err)
-            .. " buttons=" .. tostring(button_err))
+            .. tostring(form_err) .. " key=" .. tostring(key_err))
     end
     return self.chat_listeners_bound
 end
