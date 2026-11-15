@@ -752,9 +752,10 @@ function UI:render_online()
     if count then count.inner_rml = tostring(#items) end
 end
 
--- In this VO build, reading the scroll range after inner_rml replacement
--- can still return an OLD value, particularly for large batched messages.
--- A last-element anchor avoids calculating the destination from the range.
+-- RmlUi may report the previous scroll range immediately after inner_rml.
+-- Use the measured scrollable bottom, and repeat after later layout frames.
+-- Unlike ScrollIntoView(false), this never moves backwards to the location
+-- of an out-of-date element in the current VO RmlUi binding.
 function UI:scroll_chat_to_bottom(pass)
     local node = self:node("chat-list")
     if not node or not self.chat_follow_bottom then return end
@@ -769,41 +770,41 @@ function UI:scroll_chat_to_bottom(pass)
     end
 
     local before = self.chat_scroll_trace and measures() or nil
+    local target
     self.chat_scroll_applying = true
-
-    local anchor, ok_anchor = self:node("skynet-chat-tail"), false
-    if anchor then
-        ok_anchor = pcall(function() anchor:ScrollIntoView(false) end)
-    end
-
-    if not ok_anchor then
-        -- A missing anchor (or an older RmlUi Lua build) retains the
-        -- original numeric approach as a fallback.
-        pcall(function()
-            local height = tonumber(node.scroll_height) or 0
-            local client = tonumber(node.client_height) or 0
-            node.scroll_top = math.max(0, height - client)
-        end)
-    end
-
+    local ok, err = pcall(function()
+        local height = tonumber(node.scroll_height) or 0
+        local client = tonumber(node.client_height) or 0
+        target = math.max(0, height - client)
+        node.scroll_top = target
+    end)
     self.chat_scroll_applying = false
+
     if self.chat_scroll_trace then
         print("Skynet UI: chat follow pass=" .. tostring(pass)
-            .. " anchor=" .. tostring(anchor ~= nil)
-            .. " into_view=" .. tostring(ok_anchor)
+            .. " target=" .. tostring(target)
+            .. " write=" .. tostring(ok)
             .. " before=" .. tostring(before)
-            .. " after=" .. measures())
+            .. " after=" .. measures()
+            .. (not ok and (" error=" .. tostring(err)) or ""))
     end
 end
 
 function UI:schedule_chat_follow()
     if not self.chat_follow_bottom or self.chat_scroll_pending then return end
     if not self.chat_scroll_timer then
-        if type(Timer) ~= "function" then
+        -- In VO, Timer() may be a callable table, not a Lua function.
+        -- type(Timer) == "function" incorrectly rejected the working
+        -- constructor and forced every flood follow into pass 0.
+        local made, timer_or_err = pcall(function() return Timer() end)
+        if not made or not timer_or_err then
+            print("Skynet UI: cannot create chat follow timer: "
+                .. tostring(timer_or_err))
             self:scroll_chat_to_bottom(0)
+            self.chat_scroll_trace = false
             return
         end
-        self.chat_scroll_timer = Timer()
+        self.chat_scroll_timer = timer_or_err
     end
     self.chat_scroll_pending = true
 
@@ -904,9 +905,6 @@ function UI:render_chat()
         -- can generate a "scroll" event synchronously during inner_rml.
         self:schedule_chat_follow()
     end
-    -- Stable anchor is resolved through the document after the RmlUi DOM
-    -- updates. It is the final child of the scrollable chat list.
-    output[#output + 1] = '<div id="skynet-chat-tail" class="chat-tail"></div>'
     node.inner_rml = table.concat(output)
 end
 
