@@ -31,7 +31,23 @@ We use that proven original design again, **not** the separate IUP dialog or the
 
 The plugin also registers an internal `skynetui_prompt` alias that runs `prompt`. The chat command only opens while the flight HUD is visible. Submitted text is passed to `ui:deliver_chat(message)` and appears as `LOCAL TEST: ...` in the Skynet RmlUi chat history. **It is never transmitted** to VO's regular chat or a network server.
 
-This is based on code from the older working Skynet clients, but the updated implementation still needs a current-client test: activate the hotkey, type a message, submit with Enter, cancel a second prompt with Escape, and verify flight controls resume normally. The non-working RmlUi input remains hidden for possible future use; VO's native `prompt` owns text entry.
+The native prompt remains the default and works as before. The opt-in boolean-input experiment below temporarily switches the same A key to the existing inline RmlUi field.
+
+### Experimental RmlUi keyboard input (feature branch)
+
+Draugath's MDI-Core example uses **Lua booleans** with `Game.SetInputMode(not interaction_mode)`. Unlike C, Lua treats `0` as **true**, which means the previous `Game.SetInputMode(0)` test may not have disabled flight input. This branch tests `Game.SetInputMode(false)` while entering chat and `Game.SetInputMode(true)` when leaving the field. It optionally calls `gkinterface.HideMouse()` when restoring flight controls; it does **not** modify the native HUD, show the mouse, or relocate IUP elements.
+
+The branch keeps **A** hard-coded. By default, it still opens VO's working native prompt. To opt into the experiment while flying in a safe sector:
+
+```text
+/skynetui input rml
+```
+
+Then press **A**. The entry form appears at the bottom of the Skynet alliance-chat column. Test whether letter keys stop controlling the ship **and** whether text appears inside that field. Enter should submit a `LOCAL TEST` line, and Escape should cancel; either should restore normal flight input.
+
+**Safety:** An RmlUi input that remains open for 12 seconds automatically cancels and calls `Game.SetInputMode(true)`, even if no key reaches RmlUi. Hiding Skynet or leaving flight also cancels it. If Enter/Escape work, they restore input immediately. For immediate fallback, use `/skynetui input native`, or reload the interface; the default reverts to the native prompt on each load. Do not run the older `/skynetui native dock` IUP experiment simultaneously.
+
+This is an *unverified flight-client experiment*, not a claim that RmlUi input is supported by the current game. If the test fails, report both whether flight keys still work and whether any text appears in Skynet's input field, plus the VO errors log.
 
 ### Flight-only visibility
 
